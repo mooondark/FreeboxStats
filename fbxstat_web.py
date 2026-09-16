@@ -32,12 +32,25 @@ class History:
 
 
 def collect_loop(app_token):
-    session_token = open_session(app_token)
+    session_token = None
     while True:
+        if session_token is None:
+            try:
+                session_token = open_session(app_token)
+            except Exception as e:
+                print(f"collecte: erreur ignoree: {e}", file=sys.stderr)
+                time.sleep(INTERVAL)
+                continue
+
         try:
             snapshot = fetch_snapshot(session_token)
         except AuthRequired:
-            session_token = open_session(app_token)
+            try:
+                session_token = open_session(app_token)
+            except Exception as e:
+                print(f"collecte: erreur ignoree: {e}", file=sys.stderr)
+                session_token = None
+                time.sleep(INTERVAL)
             continue
         except Exception as e:
             print(f"collecte: erreur ignoree: {e}", file=sys.stderr)

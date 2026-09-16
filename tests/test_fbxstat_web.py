@@ -5,8 +5,10 @@ import tempfile
 import threading
 import unittest
 from http.server import HTTPServer
+from unittest import mock
 
 import fbxstat_web
+from freebox_api import AuthRequired
 
 
 class TestHistory(unittest.TestCase):
@@ -30,6 +32,9 @@ class TestArgParser(unittest.TestCase):
 class TestHandler(unittest.TestCase):
     def setUp(self):
         self._orig_html_path = fbxstat_web.DASHBOARD_HTML_PATH
+        self._orig_interval = fbxstat_web.INTERVAL
+        self._orig_state_lock = fbxstat_web.STATE_LOCK
+        self._orig_state = fbxstat_web.STATE
         self._tmp_html = tempfile.NamedTemporaryFile(
             mode="w", suffix=".html", delete=False, encoding="utf-8"
         )
@@ -54,6 +59,9 @@ class TestHandler(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         fbxstat_web.DASHBOARD_HTML_PATH = self._orig_html_path
+        fbxstat_web.INTERVAL = self._orig_interval
+        fbxstat_web.STATE_LOCK = self._orig_state_lock
+        fbxstat_web.STATE = self._orig_state
         os.unlink(self._tmp_html.name)
 
     def _get(self, path):
@@ -86,6 +94,44 @@ class TestHandler(unittest.TestCase):
     def test_unknown_path_returns_404(self):
         status, _, _ = self._get("/nope")
         self.assertEqual(status, 404)
+
+
+class _StopLoop(Exception):
+    """Sentinel used to break out of collect_loop's infinite loop in tests."""
+
+
+class TestCollectLoop(unittest.TestCase):
+    def setUp(self):
+        self._orig_state_lock = fbxstat_web.STATE_LOCK
+        self._orig_state = fbxstat_web.STATE
+        fbxstat_web.STATE_LOCK = threading.Lock()
+        fbxstat_web.STATE = {"snapshot": None, "history": fbxstat_web.History(maxlen=10)}
+
+    def tearDown(self):
+        fbxstat_web.STATE_LOCK = self._orig_state_lock
+        fbxstat_web.STATE = self._orig_state
+
+    def test_reauth_failure_is_caught_and_loop_keeps_ticking(self):
+        snapshot = {
+            "wan_down_bps": 1.0,
+            "wan_up_bps": 2.0,
+            "sensors": {},
+            "fans": {},
+        }
+        with mock.patch.object(
+            fbxstat_web, "open_session", side_effect=["tok-initial", RuntimeError("re-auth failed"), "tok-recovered"]
+        ) as mock_open_session, mock.patch.object(
+            fbxstat_web, "fetch_snapshot", side_effect=[AuthRequired(), snapshot, snapshot]
+        ) as mock_fetch, mock.patch.object(
+            fbxstat_web.time, "sleep", side_effect=[None, None, _StopLoop()]
+        ) as mock_sleep:
+            with self.assertRaises(_StopLoop):
+                fbxstat_web.collect_loop("app-token")
+
+        # The re-auth RuntimeError must not have propagated: the sentinel did.
+        self.assertEqual(mock_open_session.call_count, 3)
+        self.assertEqual(mock_fetch.call_count, 3)
+        self.assertEqual(mock_sleep.call_count, 3)
 
 
 if __name__ == "__main__":
