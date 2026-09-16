@@ -37,13 +37,20 @@ module au lieu de dupliquer le code (nettoyage, aucun changement de comportement
 
 ### `fbxstat_web.py`
 
-- **Thread de collecte** (`collect_loop`) : toutes les 1s, appelle `/connection/`,
-  `/system/`, `/switch/status/` + `/switch/port/{id}/stats/` pour les ports actifs,
-  `/lan/browser/pub/`, `/phone/` — même séquence que `fbxstat.py`.
-- **Historique en mémoire** : un `collections.deque(maxlen=600)` (10 minutes à 1
-  point/s) de tuples `(timestamp, rate_down, rate_up, sensors, fan_rpm)`. Perdu au
-  redémarrage du serveur — acceptable pour du monitoring temps réel, pas de
-  persistance demandée.
+- **Intervalle de rafraîchissement configurable** : argument CLI `--interval`
+  (secondes, défaut `1`). Contrôle à la fois la fréquence du thread de collecte
+  et la fréquence de polling du frontend (exposée au frontend via
+  `/api/snapshot`, champ `interval`, lu une fois au chargement de la page pour
+  régler les `setInterval`).
+- **Thread de collecte** (`collect_loop`) : toutes les `interval` secondes,
+  appelle `/connection/`, `/system/`, `/switch/status/` +
+  `/switch/port/{id}/stats/` pour les ports actifs, `/lan/browser/pub/`,
+  `/phone/` — même séquence que `fbxstat.py`.
+- **Historique en mémoire** : un `collections.deque(maxlen=600/interval)` (fenêtre
+  fixe de 10 minutes, quel que soit l'intervalle choisi) de tuples
+  `(timestamp, rate_down, rate_up, sensors, fan_rpm)`. Perdu au redémarrage du
+  serveur — acceptable pour du monitoring temps réel, pas de persistance
+  demandée.
 - **Verrou** (`threading.Lock`) autour de l'état partagé (historique + dernier
   snapshot) entre le thread de collecte et le thread HTTP.
 - **Serveur HTTP** (`http.server.ThreadingHTTPServer` + `BaseHTTPRequestHandler`) :
@@ -68,9 +75,10 @@ module au lieu de dupliquer le code (nettoyage, aucun changement de comportement
   les appareils avec IPv4 active, triés par IPv4 croissante.
 - **Bandeau d'en-tête** : matériel, version FreeboxOS, statuts Internet/
   Authentification/Téléphone (vert/rouge), IPv4/IPv6, uptime.
-- Mise à jour via `fetch()` + `setInterval` : `/api/snapshot` toutes les 1s,
-  `/api/history` toutes les 1s (deux appels distincts, chacun JSON léger).
-  Pas de WebSocket : le polling à 1 req/s est largement suffisant pour ce volume.
+- Mise à jour via `fetch()` + `setInterval`, cadencée sur l'`interval` renvoyé
+  par `/api/snapshot` (deux appels distincts par tick, `/api/snapshot` et
+  `/api/history`, chacun JSON léger). Pas de WebSocket : le polling est
+  largement suffisant à ces fréquences.
 
 ## Erreurs
 
