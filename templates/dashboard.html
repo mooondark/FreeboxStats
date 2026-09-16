@@ -1,2 +1,152 @@
 <!doctype html>
-<html><body>placeholder</body></html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Freebox Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { background: #0f1115; color: #e6e6e6; font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  .card { background: #1a1d24; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .header span { white-space: nowrap; }
+  .ok { color: #2ecc71; font-weight: bold; }
+  .ko { color: #e74c3c; font-weight: bold; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2e37; }
+  canvas { max-height: 260px; }
+  .charts { display: flex; flex-wrap: wrap; gap: 16px; }
+  .charts .card { flex: 1 1 400px; }
+</style>
+</head>
+<body>
+
+<div class="card header">
+  <span>Materiel: <b id="hdr-model">-</b></span>
+  <span>FreeboxOS: <b id="hdr-firmware">-</b></span>
+  <span>Internet: <b id="hdr-internet">-</b></span>
+  <span>Authentification: <b id="hdr-auth">-</b></span>
+  <span>Telephone: <b id="hdr-phone">-</b></span>
+  <span>IPv4: <b id="hdr-ipv4">-</b></span>
+  <span>IPv6: <b id="hdr-ipv6">-</b></span>
+  <span>Uptime: <b id="hdr-uptime">-</b></span>
+</div>
+
+<div class="charts">
+  <div class="card"><canvas id="wan-chart"></canvas></div>
+  <div class="card"><canvas id="temp-chart"></canvas></div>
+</div>
+
+<div class="card">
+  <h3>Ports</h3>
+  <table>
+    <thead><tr><th>Port</th><th>Vitesse</th><th>Down</th><th>Up</th></tr></thead>
+    <tbody id="ports-body"></tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3>Appareils</h3>
+  <table>
+    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>Type</th><th>Constructeur</th></tr></thead>
+    <tbody id="devices-body"></tbody>
+  </table>
+</div>
+
+<script>
+function fmtMbps(bps) { return (bps / 1_000_000).toFixed(2) + " Mb/s"; }
+function fmtStatus(ok) { return ok ? '<span class="ok">OK</span>' : '<span class="ko">KO</span>'; }
+
+const wanChart = new Chart(document.getElementById("wan-chart"), {
+  type: "line",
+  data: { labels: [], datasets: [
+    { label: "Down (Mb/s)", data: [], borderColor: "#3498db", tension: 0.2 },
+    { label: "Up (Mb/s)", data: [], borderColor: "#e67e22", tension: 0.2 },
+  ]},
+  options: { animation: false, responsive: true, scales: { y: { beginAtZero: true } } },
+});
+
+const tempChart = new Chart(document.getElementById("temp-chart"), {
+  type: "line",
+  data: { labels: [], datasets: [] },
+  options: {
+    animation: false, responsive: true,
+    scales: {
+      y: { type: "linear", position: "left", title: { display: true, text: "°C" } },
+      y1: { type: "linear", position: "right", title: { display: true, text: "RPM" }, grid: { drawOnChartArea: false } },
+    },
+  },
+});
+
+const TEMP_COLORS = ["#e74c3c", "#f1c40f", "#2ecc71", "#9b59b6", "#1abc9c"];
+const FAN_COLORS = ["#3498db", "#e67e22"];
+
+function updateHeader(snap) {
+  document.getElementById("hdr-model").textContent = snap.model ?? "-";
+  document.getElementById("hdr-firmware").textContent = snap.firmware ?? "-";
+  document.getElementById("hdr-internet").innerHTML = fmtStatus(snap.internet_ok);
+  document.getElementById("hdr-auth").innerHTML = fmtStatus(snap.auth_ok);
+  document.getElementById("hdr-phone").innerHTML = fmtStatus(snap.phone_ok);
+  document.getElementById("hdr-ipv4").textContent = snap.ipv4 ?? "-";
+  document.getElementById("hdr-ipv6").textContent = snap.ipv6 ?? "-";
+  document.getElementById("hdr-uptime").textContent = snap.uptime ?? "-";
+}
+
+function updateTables(snap) {
+  const portsBody = document.getElementById("ports-body");
+  portsBody.innerHTML = (snap.ports ?? []).map(p =>
+    `<tr><td>${p.port}</td><td>${p.speed}</td><td>${fmtMbps(p.down_bps)}</td><td>${fmtMbps(p.up_bps)}</td></tr>`
+  ).join("");
+
+  const devicesBody = document.getElementById("devices-body");
+  devicesBody.innerHTML = (snap.devices ?? []).map(d =>
+    `<tr><td>${d.name}</td><td>${d.ipv4}</td><td>${d.ipv6}</td><td>${d.type}</td><td>${d.vendor}</td></tr>`
+  ).join("");
+}
+
+function updateCharts(points) {
+  const labels = points.map(p => new Date(p.t * 1000).toLocaleTimeString());
+
+  wanChart.data.labels = labels;
+  wanChart.data.datasets[0].data = points.map(p => p.wan_down_bps / 1_000_000);
+  wanChart.data.datasets[1].data = points.map(p => p.wan_up_bps / 1_000_000);
+  wanChart.update();
+
+  const sensorIds = [...new Map(points.flatMap(p => p.sensors ?? []).map(s => [s.id, s.name])).entries()];
+  const fanIds = [...new Map(points.flatMap(p => p.fans ?? []).map(f => [f.id, f.name])).entries()];
+
+  tempChart.data.labels = labels;
+  tempChart.data.datasets = [
+    ...sensorIds.map(([id, name], i) => ({
+      label: name, yAxisID: "y", borderColor: TEMP_COLORS[i % TEMP_COLORS.length], tension: 0.2,
+      data: points.map(p => (p.sensors ?? []).find(s => s.id === id)?.value ?? null),
+    })),
+    ...fanIds.map(([id, name], i) => ({
+      label: name, yAxisID: "y1", borderColor: FAN_COLORS[i % FAN_COLORS.length], borderDash: [4, 2], tension: 0.2,
+      data: points.map(p => (p.fans ?? []).find(f => f.id === id)?.value ?? null),
+    })),
+  ];
+  tempChart.update();
+}
+
+let pollMs = 1000;
+
+async function tick() {
+  try {
+    const snap = await fetch("/api/snapshot").then(r => r.json());
+    pollMs = (snap.interval ?? 1) * 1000;
+    updateHeader(snap);
+    updateTables(snap);
+
+    const hist = await fetch("/api/history").then(r => r.json());
+    updateCharts(hist.points);
+  } catch (e) {
+    console.error(e);
+  }
+  setTimeout(tick, pollMs);
+}
+
+tick();
+</script>
+</body>
+</html>
