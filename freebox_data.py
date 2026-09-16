@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+"""Recuperation des donnees Freebox pour le dashboard web (retourne des dicts JSON-ready)."""
+import requests
+
+from freebox_api import BASE_URL, AuthRequired
+
+SPEED_LABELS = {
+    "10000": "10G",
+    "2500": "2.5G",
+    "1000": "1G",
+    "100": "100M",
+    "10": "10M",
+}
+
+
+def _get(path, session_token):
+    return requests.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}).json()
+
+
+def fetch_ports(session_token):
+    ports_resp = _get("/switch/status/", session_token)
+    if not ports_resp.get("success"):
+        return []
+
+    rows = []
+    for p in ports_resp["result"]:
+        if p.get("link") != "up":
+            continue
+        stats_resp = _get(f"/switch/port/{p['id']}/stats/", session_token)
+        if not stats_resp.get("success"):
+            continue
+        s = stats_resp["result"]
+        name = "SFP+" if p["id"] == 9999 else str(p["id"])
+        speed = SPEED_LABELS.get(p.get("speed"), str(p.get("speed", "N/A")))
+        rows.append({
+            "port": name,
+            "speed": speed,
+            "down_bps": max(s["rx_bytes_rate"], 0) * 8,
+            "up_bps": max(s["tx_bytes_rate"], 0) * 8,
+        })
+    return rows
+
+
+def fetch_devices(session_token):
+    hosts = _get("/lan/browser/pub/", session_token)["result"]
+
+    rows = []
+    for h in hosts:
+        ipv4 = next(
+            (c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv4" and c.get("active")),
+            None,
+        )
+        if not ipv4:
+            continue
+        ipv6 = next(
+            (c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv6" and c["addr"].startswith("fe80")),
+            "N/A",
+        )
+        rows.append({
+            "name": h.get("primary_name", "?"),
+            "ipv4": ipv4,
+            "ipv6": ipv6,
+            "type": h.get("host_type") or "N/A",
+            "vendor": h.get("vendor_name") or "N/A",
+        })
+
+    rows.sort(key=lambda r: tuple(int(x) for x in r["ipv4"].split(".")))
+    return rows
+
+
+def fetch_snapshot(session_token):
+    data = _get("/connection/", session_token)
+    if not data.get("success") and data.get("error_code") == "auth_required":
+        raise AuthRequired()
+    result = data["result"]
+
+    sys_data = _get("/system/", session_token)["result"]
+
+    try:
+        phone_data = _get("/phone/", session_token)["result"]
+        phone_ok = all(not p.get("hardware_defect", True) for p in phone_data)
+    except Exception:
+        phone_ok = False
+
+    return {
+        "model": sys_data.get("model_info", {}).get("pretty_name", "N/A"),
+        "firmware": sys_data.get("firmware_version", "N/A"),
+        "internet_ok": result.get("state") == "up",
+        "auth_ok": sys_data.get("box_authenticated", False),
+        "phone_ok": phone_ok,
+        "ipv4": result.get("ipv4", "N/A"),
+        "ipv6": result.get("ipv6", "N/A"),
+        "uptime": sys_data.get("uptime", "N/A"),
+        "wan_down_bps": max(result.get("rate_down", 0), 0) * 8,
+        "wan_up_bps": max(result.get("rate_up", 0), 0) * 8,
+        "sensors": sys_data.get("sensors", []),
+        "fans": sys_data.get("fans", []),
+        "ports": fetch_ports(session_token),
+        "devices": fetch_devices(session_token),
+    }
