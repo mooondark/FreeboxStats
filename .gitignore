@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Freebox auth token (secret)
+.fbxstat_token.json
+
 # C extensions
 *.so
 
