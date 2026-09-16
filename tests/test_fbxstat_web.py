@@ -28,6 +28,19 @@ class TestArgParser(unittest.TestCase):
         args = fbxstat_web.build_arg_parser().parse_args(["--interval", "5"])
         self.assertEqual(args.interval, 5.0)
 
+    def test_default_host_is_localhost(self):
+        args = fbxstat_web.build_arg_parser().parse_args([])
+        self.assertEqual(args.host, "127.0.0.1")
+        self.assertEqual(args.port, 8000)
+
+
+class TestMainIntervalValidation(unittest.TestCase):
+    def test_non_positive_interval_exits_with_error(self):
+        with mock.patch.object(fbxstat_web.sys, "argv", ["fbxstat_web.py", "--interval", "0"]):
+            with self.assertRaises(SystemExit) as cm:
+                fbxstat_web.main()
+        self.assertEqual(cm.exception.code, 2)
+
 
 class TestHandler(unittest.TestCase):
     def setUp(self):
@@ -86,6 +99,12 @@ class TestHandler(unittest.TestCase):
         self.assertEqual(data["model"], "Freebox v9 (r1)")
         self.assertEqual(data["interval"], 2.0)
 
+    def test_api_snapshot_includes_timestamp(self):
+        fbxstat_web.STATE["snapshot_t"] = 12345.0
+        status, content_type, body = self._get("/api/snapshot")
+        data = json.loads(body)
+        self.assertEqual(data["t"], 12345.0)
+
     def test_api_history_returns_points(self):
         status, content_type, body = self._get("/api/history")
         data = json.loads(body)
@@ -132,6 +151,17 @@ class TestCollectLoop(unittest.TestCase):
         self.assertEqual(mock_open_session.call_count, 3)
         self.assertEqual(mock_fetch.call_count, 3)
         self.assertEqual(mock_sleep.call_count, 3)
+
+    def test_snapshot_t_is_recorded_alongside_snapshot(self):
+        snapshot = {"wan_down_bps": 1.0, "wan_up_bps": 2.0, "sensors": {}, "fans": {}}
+        with mock.patch.object(fbxstat_web, "open_session", return_value="tok"), \
+                mock.patch.object(fbxstat_web, "fetch_snapshot", return_value=snapshot), \
+                mock.patch.object(fbxstat_web.time, "time", return_value=999.0), \
+                mock.patch.object(fbxstat_web.time, "sleep", side_effect=_StopLoop()):
+            with self.assertRaises(_StopLoop):
+                fbxstat_web.collect_loop("app-token")
+
+        self.assertEqual(fbxstat_web.STATE["snapshot_t"], 999.0)
 
 
 if __name__ == "__main__":

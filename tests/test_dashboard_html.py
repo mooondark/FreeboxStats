@@ -1,6 +1,8 @@
+import os
 import unittest
 
-with open("templates/dashboard.html", encoding="utf-8") as f:
+HTML_PATH = os.path.join(os.path.dirname(__file__), "..", "templates", "dashboard.html")
+with open(HTML_PATH, encoding="utf-8") as f:
     HTML = f.read()
 
 

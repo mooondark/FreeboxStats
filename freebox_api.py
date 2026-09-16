@@ -26,12 +26,12 @@ def register_app():
         "app_name": APP_NAME,
         "app_version": APP_VERSION,
         "device_name": DEVICE_NAME,
-    }).json()["result"]
+    }, timeout=10).json()["result"]
     app_token, track_id = resp["app_token"], resp["track_id"]
 
     print("Valide la demande sur l'ecran de la Freebox...")
     while True:
-        status = requests.get(f"{BASE_URL}/login/authorize/{track_id}").json()["result"]["status"]
+        status = requests.get(f"{BASE_URL}/login/authorize/{track_id}", timeout=10).json()["result"]["status"]
         if status == "granted":
             break
         if status in ("denied", "timeout"):
@@ -51,12 +51,12 @@ def get_app_token():
 
 
 def open_session(app_token):
-    challenge = requests.get(f"{BASE_URL}/login/").json()["result"]["challenge"]
+    challenge = requests.get(f"{BASE_URL}/login/", timeout=10).json()["result"]["challenge"]
     password = hmac.new(app_token.encode(), challenge.encode(), hashlib.sha1).hexdigest()
     resp = requests.post(f"{BASE_URL}/login/session/", json={
         "app_id": APP_ID,
         "password": password,
-    }).json()
+    }, timeout=10).json()
     if not resp["success"]:
         raise RuntimeError(f"Login echoue: {resp}")
     return resp["result"]["session_token"]

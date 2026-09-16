@@ -14,7 +14,7 @@ SPEED_LABELS = {
 
 
 def _get(path, session_token):
-    return requests.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}).json()
+    return requests.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}, timeout=10).json()
 
 
 def fetch_ports(session_token):

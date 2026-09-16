@@ -12,12 +12,11 @@ import time
 from freebox_api import AuthRequired, get_app_token, open_session
 from freebox_data import fetch_snapshot
 
-PORT = 8000
 DASHBOARD_HTML_PATH = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
 
 INTERVAL = 1.0
 STATE_LOCK = threading.Lock()
-STATE = {"snapshot": None, "history": None}
+STATE = {"snapshot": None, "snapshot_t": None, "history": None}
 
 
 class History:
@@ -66,6 +65,7 @@ def collect_loop(app_token):
         }
         with STATE_LOCK:
             STATE["snapshot"] = snapshot
+            STATE["snapshot_t"] = point["t"]
             STATE["history"].add(point)
         time.sleep(INTERVAL)
 
@@ -87,13 +87,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _snapshot_payload(self):
         with STATE_LOCK:
             snapshot = STATE["snapshot"]
+            snapshot_t = STATE.get("snapshot_t")
         if snapshot is None:
             return {"interval": INTERVAL}
-        return {**snapshot, "interval": INTERVAL}
+        return {**snapshot, "interval": INTERVAL, "t": snapshot_t}
 
     def _serve_file(self, path, content_type):
-        with open(path, "rb") as f:
-            body = f.read()
+        try:
+            with open(path, "rb") as f:
+                body = f.read()
+        except OSError:
+            self.send_error(500)
+            return
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -115,20 +120,25 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def build_arg_parser():
     parser = argparse.ArgumentParser(description="Dashboard web Freebox")
     parser.add_argument("--interval", type=float, default=1.0, help="secondes entre deux rafraichissements")
+    parser.add_argument("--host", default="127.0.0.1", help="adresse d'ecoute (0.0.0.0 pour tout le LAN)")
+    parser.add_argument("--port", type=int, default=8000, help="port d'ecoute")
     return parser
 
 
 def main():
     global INTERVAL
-    args = build_arg_parser().parse_args()
+    parser = build_arg_parser()
+    args = parser.parse_args()
+    if args.interval <= 0:
+        parser.error("--interval must be positive")
     INTERVAL = args.interval
     STATE["history"] = History(maxlen=max(1, round(600 / INTERVAL)))
 
     app_token = get_app_token()
     threading.Thread(target=collect_loop, args=(app_token,), daemon=True).start()
 
-    server = http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Dashboard sur http://localhost:{PORT}")
+    server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"Dashboard sur http://{args.host}:{args.port}")
     server.serve_forever()
 
 

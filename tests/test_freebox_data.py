@@ -12,7 +12,7 @@ def _resp(payload):
 class TestFetchPorts(unittest.TestCase):
     @patch("freebox_data.requests.get")
     def test_skips_down_links_and_maps_speed(self, mock_get):
-        def side_effect(url, headers=None):
+        def side_effect(url, headers=None, timeout=None):
             if url.endswith("/switch/status/"):
                 return _resp({"success": True, "result": [
                     {"id": 1, "link": "up", "speed": "2500"},
@@ -85,7 +85,7 @@ class TestFetchSnapshot(unittest.TestCase):
     @patch("freebox_data.fetch_ports", return_value=[{"port": "1"}])
     @patch("freebox_data.requests.get")
     def test_builds_full_snapshot(self, mock_get, mock_ports, mock_devices):
-        def side_effect(url, headers=None):
+        def side_effect(url, headers=None, timeout=None):
             if url.endswith("/connection/"):
                 return _resp({"success": True, "result": {
                     "state": "up", "ipv4": "1.2.3.4", "ipv6": "::1",

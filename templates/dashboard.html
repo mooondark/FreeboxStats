@@ -12,6 +12,8 @@
   .header span { white-space: nowrap; }
   .ok { color: #2ecc71; font-weight: bold; }
   .ko { color: #e74c3c; font-weight: bold; }
+  .stale-badge { color: #f1c40f; font-weight: bold; }
+  .header.stale .ok, .header.stale .ko { opacity: 0.4; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2e37; }
   canvas { max-height: 260px; }
@@ -21,7 +23,8 @@
 </head>
 <body>
 
-<div class="card header">
+<div class="card header" id="dashboard-header">
+  <span id="hdr-stale" class="stale-badge" style="display:none">DONNEES FIGEES</span>
   <span>Materiel: <b id="hdr-model">-</b></span>
   <span>FreeboxOS: <b id="hdr-firmware">-</b></span>
   <span>Internet: <b id="hdr-internet">-</b></span>
@@ -54,8 +57,14 @@
 </div>
 
 <script>
-function fmtMbps(bps) { return (bps / 1_000_000).toFixed(2) + " Mb/s"; }
-function fmtStatus(ok) { return ok ? '<span class="ok">OK</span>' : '<span class="ko">KO</span>'; }
+function fmtMbps(bps) { return ((bps ?? 0) / 1_000_000).toFixed(2) + " Mb/s"; }
+function fmtStatus(ok) {
+  if (ok === undefined || ok === null) return '<span>-</span>';
+  return ok ? '<span class="ok">OK</span>' : '<span class="ko">KO</span>';
+}
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
 
 const wanChart = new Chart(document.getElementById("wan-chart"), {
   type: "line",
@@ -81,7 +90,7 @@ const tempChart = new Chart(document.getElementById("temp-chart"), {
 const TEMP_COLORS = ["#e74c3c", "#f1c40f", "#2ecc71", "#9b59b6", "#1abc9c"];
 const FAN_COLORS = ["#3498db", "#e67e22"];
 
-function updateHeader(snap) {
+function updateHeader(snap, stale) {
   document.getElementById("hdr-model").textContent = snap.model ?? "-";
   document.getElementById("hdr-firmware").textContent = snap.firmware ?? "-";
   document.getElementById("hdr-internet").innerHTML = fmtStatus(snap.internet_ok);
@@ -90,17 +99,19 @@ function updateHeader(snap) {
   document.getElementById("hdr-ipv4").textContent = snap.ipv4 ?? "-";
   document.getElementById("hdr-ipv6").textContent = snap.ipv6 ?? "-";
   document.getElementById("hdr-uptime").textContent = snap.uptime ?? "-";
+  document.getElementById("dashboard-header").classList.toggle("stale", !!stale);
+  document.getElementById("hdr-stale").style.display = stale ? "" : "none";
 }
 
 function updateTables(snap) {
   const portsBody = document.getElementById("ports-body");
   portsBody.innerHTML = (snap.ports ?? []).map(p =>
-    `<tr><td>${p.port}</td><td>${p.speed}</td><td>${fmtMbps(p.down_bps)}</td><td>${fmtMbps(p.up_bps)}</td></tr>`
+    `<tr><td>${esc(p.port)}</td><td>${esc(p.speed)}</td><td>${fmtMbps(p.down_bps)}</td><td>${fmtMbps(p.up_bps)}</td></tr>`
   ).join("");
 
   const devicesBody = document.getElementById("devices-body");
   devicesBody.innerHTML = (snap.devices ?? []).map(d =>
-    `<tr><td>${d.name}</td><td>${d.ipv4}</td><td>${d.ipv6}</td><td>${d.type}</td><td>${d.vendor}</td></tr>`
+    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
   ).join("");
 }
 
@@ -134,8 +145,10 @@ let pollMs = 1000;
 async function tick() {
   try {
     const snap = await fetch("/api/snapshot").then(r => r.json());
-    pollMs = (snap.interval ?? 1) * 1000;
-    updateHeader(snap);
+    const interval = snap.interval ?? 1;
+    pollMs = interval * 1000;
+    const stale = snap.t != null && (Date.now() / 1000 - snap.t) > 3 * interval;
+    updateHeader(snap, stale);
     updateTables(snap);
 
     const hist = await fetch("/api/history").then(r => r.json());
