@@ -48,6 +48,8 @@
   <span class="btns" id="range"><button data-s="60" class="active">1 min</button><button data-s="180">3 min</button><button data-s="300">5 min</button></span>
   <span>Rafraîchissement</span>
   <span class="btns" id="refresh"><button data-s="1">1 s</button><button data-s="3">3 s</button><button data-s="5">5 s</button></span>
+  <span>Échelle vitesse</span>
+  <span class="btns" id="scale"><button data-m="linear" class="active">Linéaire</button><button data-m="log">Log</button></span>
 </div>
 
 <div class="charts">
@@ -100,6 +102,8 @@ function esc(s) {
 
 let windowS = 60;
 let lastPoints = [];
+let logScale = false;
+const LOG_FLOOR = 0.001;
 const timeAxis = { type: "linear", ticks: { maxTicksLimit: 7, callback: v => new Date(v * 1000).toLocaleTimeString() } };
 
 const maxLabels = {
@@ -117,7 +121,7 @@ const maxLabels = {
       const peak = ds.data.reduce((a, b) => (b.y > a.y ? b : a));
       const px = scales.x.getPixelForValue(peak.x);
       const py = scales[ds.yAxisID].getPixelForValue(peak.y);
-      const text = `${peak.y.toFixed(2)} Mb/s`;
+      const text = `${peak.y.toFixed(peak.y < 0.1 ? 3 : 2)} Mb/s`;
       const w = ctx.measureText(text).width + 2 * pad;
       const y = Math.max(py - 8 - h, chartArea.top);
       let x = Math.min(Math.max(px - w / 2, chartArea.left), chartArea.right - w);
@@ -206,6 +210,25 @@ function updateTables(snap) {
   ).join("");
 }
 
+function fmtLogTick(v) {
+  return v >= 1 ? Math.round(v).toLocaleString() : String(+v.toPrecision(2));
+}
+
+function applyWanScales() {
+  [["y", 0], ["y1", 1]].forEach(([id, i]) => {
+    const scale = wanChart.options.scales[id];
+    scale.ticks = { ...scale.ticks, callback: logScale ? fmtLogTick : undefined };
+    if (!logScale) {
+      Object.assign(scale, { type: "linear", min: undefined, max: undefined, beginAtZero: true, grace: "30%" });
+      return;
+    }
+    // Leave ~20% of the plot height above the peak (in decades) for the value label
+    const peak = Math.max(LOG_FLOOR, ...wanChart.data.datasets[i].data.map(p => p.y));
+    const decades = Math.max(Math.log10(peak / LOG_FLOOR), 1);
+    Object.assign(scale, { type: "logarithmic", min: LOG_FLOOR, max: LOG_FLOOR * 10 ** (decades / 0.8), beginAtZero: false, grace: 0 });
+  });
+}
+
 function updateCharts(allPoints) {
   lastPoints = allPoints;
   const now = Date.now() / 1000;
@@ -216,8 +239,10 @@ function updateCharts(allPoints) {
     chart.options.scales.x.max = now;
   }
 
-  wanChart.data.datasets[0].data = points.map(p => ({ x: p.t, y: p.wan_down_bps / 1_000_000 }));
-  wanChart.data.datasets[1].data = points.map(p => ({ x: p.t, y: p.wan_up_bps / 1_000_000 }));
+  const floor = logScale ? LOG_FLOOR : 0;
+  wanChart.data.datasets[0].data = points.map(p => ({ x: p.t, y: Math.max(p.wan_down_bps / 1_000_000, floor) }));
+  wanChart.data.datasets[1].data = points.map(p => ({ x: p.t, y: Math.max(p.wan_up_bps / 1_000_000, floor) }));
+  applyWanScales();
   wanChart.update();
 
   const sensorIds = [...new Map(points.flatMap(p => p.sensors ?? []).map(s => [s.id, s.name])).entries()];
@@ -244,6 +269,13 @@ document.getElementById("range").addEventListener("click", e => {
   if (!e.target.dataset.s) return;
   windowS = Number(e.target.dataset.s);
   markActive(e.currentTarget, windowS);
+  updateCharts(lastPoints);
+});
+
+document.getElementById("scale").addEventListener("click", e => {
+  if (!e.target.dataset.m) return;
+  logScale = e.target.dataset.m === "log";
+  for (const b of e.currentTarget.children) b.classList.toggle("active", b === e.target);
   updateCharts(lastPoints);
 });
 

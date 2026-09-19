@@ -16,6 +16,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 
 - Graphique du débit WAN descendant / montant, chacun sur son propre axe (Mb/s).
 - Graphique des températures (axe de gauche, °C) et de la vitesse du ventilateur (axe de droite, RPM).
+- Échelle du graphique de vitesse commutable entre linéaire et logarithmique (pour ne pas écraser les petites valeurs ; en mode log, les valeurs nulles sont ramenées à 0,001 Mb/s).
 - Fenêtre glissante réglable : 1, 3 ou 5 minutes.
 - Fréquence de rafraîchissement réglable depuis la page : 1, 3 ou 5 secondes.
 - En-tête : matériel, version de Freebox OS, état des services (Internet, Authentification, Téléphone), IPv4/IPv6, uptime et débit global.
@@ -52,13 +53,14 @@ Au **premier lancement**, l'application demande une autorisation à la Freebox :
 python fbxstat_web.py
 ```
 
-Puis ouvre <http://127.0.0.1:8000>.
+Le navigateur par défaut s'ouvre automatiquement sur <http://127.0.0.1:8000> (désactivable avec `--no-browser`).
 
 | Option       | Défaut      | Description                                                        |
 |--------------|-------------|--------------------------------------------------------------------|
 | `--interval` | `1`         | Secondes entre deux relevés (modifiable ensuite depuis la page)    |
 | `--host`     | `127.0.0.1` | Adresse d'écoute (`0.0.0.0` pour rendre le dashboard visible du LAN) |
 | `--port`     | `8000`      | Port d'écoute                                                      |
+| `--no-browser` | (désactivé) | Ne pas ouvrir le navigateur au démarrage                         |
 
 L'historique (600 relevés au maximum) est conservé en mémoire : il est perdu à l'arrêt du serveur.
 

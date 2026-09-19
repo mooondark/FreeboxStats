@@ -28,6 +28,16 @@ class TestArgParser(unittest.TestCase):
         args = fbxstat_web.build_arg_parser().parse_args(["--interval", "5"])
         self.assertEqual(args.interval, 5.0)
 
+    def test_browser_opens_by_default_and_can_be_disabled(self):
+        parser = fbxstat_web.build_arg_parser()
+        self.assertFalse(parser.parse_args([]).no_browser)
+        self.assertTrue(parser.parse_args(["--no-browser"]).no_browser)
+
+    def test_browser_url_replaces_wildcard_host(self):
+        self.assertEqual(fbxstat_web.browser_url("0.0.0.0", 8000), "http://127.0.0.1:8000")
+        self.assertEqual(fbxstat_web.browser_url("::", 8000), "http://127.0.0.1:8000")
+        self.assertEqual(fbxstat_web.browser_url("192.168.1.10", 9000), "http://192.168.1.10:9000")
+
     def test_default_host_is_localhost(self):
         args = fbxstat_web.build_arg_parser().parse_args([])
         self.assertEqual(args.host, "127.0.0.1")

@@ -8,6 +8,7 @@ import os
 import sys
 import threading
 import time
+import webbrowser
 
 from freebox_api import AuthRequired, get_app_token, open_session
 from freebox_data import fetch_snapshot
@@ -144,7 +145,14 @@ def build_arg_parser():
     parser.add_argument("--interval", type=float, default=1.0, help="secondes entre deux rafraichissements")
     parser.add_argument("--host", default="127.0.0.1", help="adresse d'ecoute (0.0.0.0 pour tout le LAN)")
     parser.add_argument("--port", type=int, default=8000, help="port d'ecoute")
+    parser.add_argument("--no-browser", action="store_true", help="ne pas ouvrir le navigateur au demarrage")
     return parser
+
+
+def browser_url(host, port):
+    if host in ("0.0.0.0", "::"):
+        host = "127.0.0.1"
+    return f"http://{host}:{port}"
 
 
 def main():
@@ -161,6 +169,8 @@ def main():
 
     server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
     print(f"Dashboard sur http://{args.host}:{args.port}")
+    if not args.no_browser:
+        webbrowser.open(browser_url(args.host, args.port))
     server.serve_forever()
 
 
