@@ -15,6 +15,7 @@ from freebox_data import fetch_snapshot
 DASHBOARD_HTML_PATH = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
 
 INTERVAL = 1.0
+ALLOWED_INTERVALS = (1, 3, 5)
 STATE_LOCK = threading.Lock()
 STATE = {"snapshot": None, "snapshot_t": None, "history": None}
 
@@ -84,6 +85,27 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+    def do_POST(self):
+        global INTERVAL
+        if self.path != "/api/interval":
+            self.send_error(404)
+            return
+        if self.headers.get("Content-Type", "").split(";")[0].strip() != "application/json":
+            self.send_error(415)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= 100:
+                raise ValueError
+            value = json.loads(self.rfile.read(length))["interval"]
+            if isinstance(value, bool) or value not in ALLOWED_INTERVALS:
+                raise ValueError
+        except (ValueError, KeyError, TypeError):
+            self.send_error(400)
+            return
+        INTERVAL = float(value)
+        self._serve_json({"interval": INTERVAL})
+
     def _snapshot_payload(self):
         with STATE_LOCK:
             snapshot = STATE["snapshot"]
@@ -132,7 +154,7 @@ def main():
     if args.interval <= 0:
         parser.error("--interval must be positive")
     INTERVAL = args.interval
-    STATE["history"] = History(maxlen=max(1, round(600 / INTERVAL)))
+    STATE["history"] = History(maxlen=max(1, round(600 / min(INTERVAL, 1.0))))
 
     app_token = get_app_token()
     threading.Thread(target=collect_loop, args=(app_token,), daemon=True).start()

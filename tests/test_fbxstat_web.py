@@ -85,6 +85,40 @@ class TestHandler(unittest.TestCase):
         conn.close()
         return resp.status, resp.getheader("Content-Type"), body
 
+    def _post(self, path, body, content_type="application/json"):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port)
+        conn.request("POST", path, body=body, headers={"Content-Type": content_type})
+        resp = conn.getresponse()
+        data = resp.read()
+        conn.close()
+        return resp.status, data
+
+    def test_post_interval_updates_server_interval(self):
+        status, data = self._post("/api/interval", json.dumps({"interval": 5}))
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data), {"interval": 5.0})
+        self.assertEqual(fbxstat_web.INTERVAL, 5.0)
+
+    def test_post_interval_rejects_value_outside_allowlist(self):
+        for bad in (0, 2, -1, 999, "abc", None):
+            status, _ = self._post("/api/interval", json.dumps({"interval": bad}))
+            self.assertEqual(status, 400, bad)
+        self.assertEqual(fbxstat_web.INTERVAL, 2.0)
+
+    def test_post_interval_rejects_malformed_body(self):
+        status, _ = self._post("/api/interval", "not json")
+        self.assertEqual(status, 400)
+        self.assertEqual(fbxstat_web.INTERVAL, 2.0)
+
+    def test_post_interval_requires_json_content_type(self):
+        status, _ = self._post("/api/interval", json.dumps({"interval": 5}), content_type="text/plain")
+        self.assertEqual(status, 415)
+        self.assertEqual(fbxstat_web.INTERVAL, 2.0)
+
+    def test_post_unknown_path_returns_404(self):
+        status, _ = self._post("/api/nope", "{}")
+        self.assertEqual(status, 404)
+
     def test_root_serves_dashboard_html(self):
         status, content_type, body = self._get("/")
         self.assertEqual(status, 200)

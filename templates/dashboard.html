@@ -6,18 +6,24 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <style>
   :root { color-scheme: dark; }
-  body { background: #0f1115; color: #e6e6e6; font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  body { background: #0f1115; color: #e6e6e6; font-family: system-ui, sans-serif; font-size: 13px; margin: 0; padding: 16px; }
+  h3 { font-size: 14px; margin: 0 0 8px; text-align: center; }
   .card { background: #1a1d24; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
-  .header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .header { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: center; }
   .header span { white-space: nowrap; }
   .ok { color: #2ecc71; font-weight: bold; }
   .ko { color: #e74c3c; font-weight: bold; }
   .stale-badge { color: #f1c40f; font-weight: bold; }
   .header.stale .ok, .header.stale .ko { opacity: 0.4; }
-  table { width: 100%; border-collapse: collapse; }
+  table { width: auto; margin: 0 auto; border-collapse: collapse; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2e37; }
   canvas { max-height: 260px; }
-  .charts { display: flex; flex-wrap: wrap; gap: 16px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .btns button { background: #1a1d24; color: #e6e6e6; border: 1px solid #2a2e37; padding: 4px 12px; cursor: pointer; font-size: 13px; }
+  .btns button:first-child { border-radius: 6px 0 0 6px; }
+  .btns button:last-child { border-radius: 0 6px 6px 0; }
+  .btns button.active { background: #3498db; border-color: #3498db; color: #fff; }
+  .charts { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
   .charts .card { flex: 1 1 400px; }
 </style>
 </head>
@@ -33,6 +39,14 @@
   <span>IPv4: <b id="hdr-ipv4">-</b></span>
   <span>IPv6: <b id="hdr-ipv6">-</b></span>
   <span>Uptime: <b id="hdr-uptime">-</b></span>
+  <span>Débit: <b id="hdr-speed">-</b></span>
+</div>
+
+<div class="controls">
+  <span>Durée du graphique</span>
+  <span class="btns" id="range"><button data-s="60" class="active">1 min</button><button data-s="180">3 min</button><button data-s="300">5 min</button></span>
+  <span>Rafraîchissement</span>
+  <span class="btns" id="refresh"><button data-s="1">1 s</button><button data-s="3">3 s</button><button data-s="5">5 s</button></span>
 </div>
 
 <div class="charts">
@@ -62,25 +76,47 @@ function fmtStatus(ok) {
   if (ok === undefined || ok === null) return '<span>-</span>';
   return ok ? '<span class="ok">OK</span>' : '<span class="ko">KO</span>';
 }
+const TYPE_ICONS = {
+  nas: "🗄️", smartphone: "📱", tablet: "📱", workstation: "🖥️", laptop: "💻",
+  television: "📺", "set-top_box": "📺", printer: "🖨️", vg_console: "🎮",
+  ip_camera: "📷", camera: "📷", ip_phone: "☎️", light: "💡", outlet: "🔌",
+  appliances: "🏠", thermostat: "🌡️", networking_device: "📡", repeater: "📡",
+  wifi_access_point: "📡", multimedia_device: "🔊", other: "❔",
+};
+function typeIcon(t) {
+  return `<span title="${esc(t)}">${TYPE_ICONS[t] ?? "❔"}</span>`;
+}
 function esc(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+let windowS = 60;
+let lastPoints = [];
+const timeAxis = { type: "linear", ticks: { maxTicksLimit: 7, callback: v => new Date(v * 1000).toLocaleTimeString() } };
+
 const wanChart = new Chart(document.getElementById("wan-chart"), {
   type: "line",
-  data: { labels: [], datasets: [
-    { label: "Down (Mb/s)", data: [], borderColor: "#3498db", tension: 0.2 },
-    { label: "Up (Mb/s)", data: [], borderColor: "#e67e22", tension: 0.2 },
+  data: { datasets: [
+    { label: "Down (Mb/s)", data: [], yAxisID: "y", borderColor: "#3498db", tension: 0.2 },
+    { label: "Up (Mb/s)", data: [], yAxisID: "y1", borderColor: "#e67e22", tension: 0.2 },
   ]},
-  options: { animation: false, responsive: true, scales: { y: { beginAtZero: true } } },
+  options: {
+    animation: false, responsive: true,
+    scales: {
+      x: { ...timeAxis },
+      y: { type: "linear", position: "left", beginAtZero: true, title: { display: true, text: "Down (Mb/s)" } },
+      y1: { type: "linear", position: "right", beginAtZero: true, title: { display: true, text: "Up (Mb/s)" }, grid: { drawOnChartArea: false } },
+    },
+  },
 });
 
 const tempChart = new Chart(document.getElementById("temp-chart"), {
   type: "line",
-  data: { labels: [], datasets: [] },
+  data: { datasets: [] },
   options: {
     animation: false, responsive: true,
     scales: {
+      x: { ...timeAxis },
       y: { type: "linear", position: "left", title: { display: true, text: "°C" } },
       y1: { type: "linear", position: "right", title: { display: true, text: "RPM" }, grid: { drawOnChartArea: false } },
     },
@@ -99,6 +135,8 @@ function updateHeader(snap, stale) {
   document.getElementById("hdr-ipv4").textContent = snap.ipv4 ?? "-";
   document.getElementById("hdr-ipv6").textContent = snap.ipv6 ?? "-";
   document.getElementById("hdr-uptime").textContent = snap.uptime ?? "-";
+  document.getElementById("hdr-speed").textContent =
+    snap.wan_down_bps == null ? "-" : `↓ ${fmtMbps(snap.wan_down_bps)}  ↑ ${fmtMbps(snap.wan_up_bps)}`;
   document.getElementById("dashboard-header").classList.toggle("stale", !!stale);
   document.getElementById("hdr-stale").style.display = stale ? "" : "none";
 }
@@ -111,43 +149,86 @@ function updateTables(snap) {
 
   const devicesBody = document.getElementById("devices-body");
   devicesBody.innerHTML = (snap.devices ?? []).map(d =>
-    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
+    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
   ).join("");
 }
 
-function updateCharts(points) {
-  const labels = points.map(p => new Date(p.t * 1000).toLocaleTimeString());
+function updateCharts(allPoints) {
+  lastPoints = allPoints;
+  const now = Date.now() / 1000;
+  const points = allPoints.filter(p => p.t >= now - windowS);
 
-  wanChart.data.labels = labels;
-  wanChart.data.datasets[0].data = points.map(p => p.wan_down_bps / 1_000_000);
-  wanChart.data.datasets[1].data = points.map(p => p.wan_up_bps / 1_000_000);
+  for (const chart of [wanChart, tempChart]) {
+    chart.options.scales.x.min = now - windowS;
+    chart.options.scales.x.max = now;
+  }
+
+  wanChart.data.datasets[0].data = points.map(p => ({ x: p.t, y: p.wan_down_bps / 1_000_000 }));
+  wanChart.data.datasets[1].data = points.map(p => ({ x: p.t, y: p.wan_up_bps / 1_000_000 }));
   wanChart.update();
 
   const sensorIds = [...new Map(points.flatMap(p => p.sensors ?? []).map(s => [s.id, s.name])).entries()];
   const fanIds = [...new Map(points.flatMap(p => p.fans ?? []).map(f => [f.id, f.name])).entries()];
 
-  tempChart.data.labels = labels;
   tempChart.data.datasets = [
     ...sensorIds.map(([id, name], i) => ({
       label: name, yAxisID: "y", borderColor: TEMP_COLORS[i % TEMP_COLORS.length], tension: 0.2,
-      data: points.map(p => (p.sensors ?? []).find(s => s.id === id)?.value ?? null),
+      data: points.map(p => ({ x: p.t, y: (p.sensors ?? []).find(s => s.id === id)?.value ?? null })),
     })),
     ...fanIds.map(([id, name], i) => ({
       label: name, yAxisID: "y1", borderColor: FAN_COLORS[i % FAN_COLORS.length], borderDash: [4, 2], tension: 0.2,
-      data: points.map(p => (p.fans ?? []).find(f => f.id === id)?.value ?? null),
+      data: points.map(p => ({ x: p.t, y: (p.fans ?? []).find(f => f.id === id)?.value ?? null })),
     })),
   ];
   tempChart.update();
 }
 
-let pollMs = 1000;
+function markActive(group, value) {
+  for (const b of group.children) b.classList.toggle("active", Number(b.dataset.s) === value);
+}
+
+document.getElementById("range").addEventListener("click", e => {
+  if (!e.target.dataset.s) return;
+  windowS = Number(e.target.dataset.s);
+  markActive(e.currentTarget, windowS);
+  updateCharts(lastPoints);
+});
+
+let refreshS = null;
+document.getElementById("refresh").addEventListener("click", async e => {
+  if (!e.target.dataset.s) return;
+  const group = e.currentTarget;
+  try {
+    const r = await fetch("/api/interval", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ interval: Number(e.target.dataset.s) }),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    refreshS = (await r.json()).interval;
+  } catch (err) {
+    console.error(err);
+    return;
+  }
+  markActive(group, refreshS);
+  clearTimeout(tickTimer);
+  tick();
+});
+
+let tickTimer;
+let busy = false;
 
 async function tick() {
+  if (busy) return;
+  busy = true;
   try {
     const snap = await fetch("/api/snapshot").then(r => r.json());
     const interval = snap.interval ?? 1;
-    pollMs = interval * 1000;
-    const stale = snap.t != null && (Date.now() / 1000 - snap.t) > 3 * interval;
+    if (refreshS === null) {
+      refreshS = interval;
+      markActive(document.getElementById("refresh"), refreshS);
+    }
+    const stale = snap.t != null && (Date.now() / 1000 - snap.t) > 3 * Math.max(interval, refreshS);
     updateHeader(snap, stale);
     updateTables(snap);
 
@@ -156,7 +237,8 @@ async function tick() {
   } catch (e) {
     console.error(e);
   }
-  setTimeout(tick, pollMs);
+  busy = false;
+  tickTimer = setTimeout(tick, (refreshS ?? 1) * 1000);
 }
 
 tick();
