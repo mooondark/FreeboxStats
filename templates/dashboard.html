@@ -47,7 +47,7 @@
   <span>Durée du graphique</span>
   <span class="btns" id="range"><button data-s="60" class="active">1 min</button><button data-s="180">3 min</button><button data-s="300">5 min</button></span>
   <span>Rafraîchissement</span>
-  <span class="btns" id="refresh"><button data-s="1">1 s</button><button data-s="3">3 s</button><button data-s="5">5 s</button></span>
+  <span class="btns" id="refresh"><button data-s="1">1 s</button><button data-s="3">3 s</button><button data-s="5">5 s</button><button data-s="pause">Pause</button></span>
   <span>Échelle vitesse</span>
   <span class="btns" id="scale"><button data-m="linear" class="active">Linéaire</button><button data-m="log">Log</button></span>
 </div>
@@ -103,8 +103,11 @@ function esc(s) {
 let windowS = 60;
 let lastPoints = [];
 let logScale = false;
+let paused = false;
+let pausedAt = 0;
 const LOG_FLOOR = 0.001;
 const timeAxis = { type: "linear", ticks: { maxTicksLimit: 7, callback: v => new Date(v * 1000).toLocaleTimeString() } };
+const timeTooltip = { tooltip: { callbacks: { title: items => new Date(items[0].parsed.x * 1000).toLocaleTimeString() } } };
 
 const maxLabels = {
   id: "maxLabels",
@@ -156,7 +159,7 @@ const wanChart = new Chart(document.getElementById("wan-chart"), {
     { label: "Up (Mb/s)", data: [], yAxisID: "y1", borderColor: "#e67e22", tension: 0.2 },
   ]},
   options: {
-    animation: false, responsive: true,
+    animation: false, responsive: true, plugins: timeTooltip,
     scales: {
       x: { ...timeAxis },
       y: { type: "linear", position: "left", beginAtZero: true, grace: "30%", title: { display: true, text: "Down (Mb/s)" } },
@@ -169,7 +172,7 @@ const tempChart = new Chart(document.getElementById("temp-chart"), {
   type: "line",
   data: { datasets: [] },
   options: {
-    animation: false, responsive: true,
+    animation: false, responsive: true, plugins: timeTooltip,
     scales: {
       x: { ...timeAxis },
       y: { type: "linear", position: "left", title: { display: true, text: "°C" } },
@@ -231,7 +234,7 @@ function applyWanScales() {
 
 function updateCharts(allPoints) {
   lastPoints = allPoints;
-  const now = Date.now() / 1000;
+  const now = paused ? pausedAt : Date.now() / 1000;
   const points = allPoints.filter(p => p.t >= now - windowS);
 
   for (const chart of [wanChart, tempChart]) {
@@ -283,6 +286,13 @@ let refreshS = null;
 document.getElementById("refresh").addEventListener("click", async e => {
   if (!e.target.dataset.s) return;
   const group = e.currentTarget;
+  if (e.target.dataset.s === "pause") {
+    paused = true;
+    pausedAt = Date.now() / 1000;
+    clearTimeout(tickTimer);
+    for (const b of group.children) b.classList.toggle("active", b === e.target);
+    return;
+  }
   try {
     const r = await fetch("/api/interval", {
       method: "POST",
@@ -295,6 +305,7 @@ document.getElementById("refresh").addEventListener("click", async e => {
     console.error(err);
     return;
   }
+  paused = false;
   markActive(group, refreshS);
   clearTimeout(tickTimer);
   tick();
@@ -308,6 +319,11 @@ async function tick() {
   busy = true;
   try {
     const snap = await fetch("/api/snapshot").then(r => r.json());
+    const hist = await fetch("/api/history").then(r => r.json());
+    if (paused) {
+      busy = false;
+      return;
+    }
     const interval = snap.interval ?? 1;
     if (refreshS === null) {
       refreshS = interval;
@@ -316,8 +332,6 @@ async function tick() {
     const stale = snap.t != null && (Date.now() / 1000 - snap.t) > 3 * Math.max(interval, refreshS);
     updateHeader(snap, stale);
     updateTables(snap);
-
-    const hist = await fetch("/api/history").then(r => r.json());
     updateCharts(hist.points);
   } catch (e) {
     console.error(e);
