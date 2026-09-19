@@ -20,18 +20,23 @@ class TestFetchPorts(unittest.TestCase):
                     {"id": 9999, "link": "up", "speed": "10000"},
                 ]})
             if url.endswith("/switch/port/1/stats/"):
-                return _resp({"success": True, "result": {"rx_bytes_rate": 100, "tx_bytes_rate": 10}})
+                return _resp({"success": True, "result": {
+                    "rx_bytes_rate": 100, "tx_bytes_rate": 10, "rx_good_bytes": 5000, "tx_bytes": 9000,
+                }})
             if url.endswith("/switch/port/9999/stats/"):
-                return _resp({"success": True, "result": {"rx_bytes_rate": -1, "tx_bytes_rate": -1}})
+                return _resp({"success": True, "result": {
+                    "rx_bytes_rate": -1, "tx_bytes_rate": -1, "rx_good_bytes": 200, "tx_bytes": 300,
+                }})
             raise AssertionError(f"unexpected URL {url}")
 
         mock_get.side_effect = side_effect
 
         ports = freebox_data.fetch_ports("session-token")
 
+        # rx/tx are seen from the box: what the box sends (tx) is the device's download
         self.assertEqual(ports, [
-            {"port": "1", "speed": "2.5G", "down_bps": 800.0, "up_bps": 80.0},
-            {"port": "SFP+", "speed": "10G", "down_bps": 0.0, "up_bps": 0.0},
+            {"port": "1", "speed": "2.5G", "down_bps": 80.0, "up_bps": 800.0, "down_bytes": 9000, "up_bytes": 5000},
+            {"port": "SFP+", "speed": "10G", "down_bps": 0.0, "up_bps": 0.0, "down_bytes": 300, "up_bytes": 200},
         ])
 
 
@@ -125,6 +130,7 @@ class TestFetchSnapshot(unittest.TestCase):
                 return _resp({"success": True, "result": {
                     "state": "up", "ipv4": "1.2.3.4", "ipv6": "::1",
                     "rate_down": 100, "rate_up": 10,
+                    "bytes_down": 123456, "bytes_up": 7890,
                 }})
             if url.endswith("/system/"):
                 return _resp({"result": {
@@ -150,6 +156,8 @@ class TestFetchSnapshot(unittest.TestCase):
         self.assertTrue(snap["phone_ok"])
         self.assertEqual(snap["wan_down_bps"], 800.0)
         self.assertEqual(snap["wan_up_bps"], 80.0)
+        self.assertEqual(snap["wan_down_bytes"], 123456)
+        self.assertEqual(snap["wan_up_bytes"], 7890)
         self.assertEqual(snap["ports"], [{"port": "1"}])
         self.assertEqual(snap["devices"], [{"name": "A"}])
 

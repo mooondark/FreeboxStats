@@ -34,11 +34,14 @@ def fetch_ports(session_token):
         s = stats_resp["result"]
         name = "SFP+" if p["id"] == 9999 else str(p["id"])
         speed = SPEED_LABELS.get(p.get("speed"), str(p.get("speed", "N/A")))
+        # rx/tx are counted by the box: what it sends (tx) is the connected device's download
         rows.append({
             "port": name,
             "speed": speed,
-            "down_bps": max(s["rx_bytes_rate"], 0) * 8,
-            "up_bps": max(s["tx_bytes_rate"], 0) * 8,
+            "down_bps": max(s["tx_bytes_rate"], 0) * 8,
+            "up_bps": max(s["rx_bytes_rate"], 0) * 8,
+            "down_bytes": max(s.get("tx_bytes", 0), 0),
+            "up_bytes": max(s.get("rx_good_bytes", 0), 0),
         })
     return rows
 
@@ -98,6 +101,8 @@ def fetch_snapshot(session_token):
         "uptime": sys_data.get("uptime", "N/A"),
         "wan_down_bps": max(result.get("rate_down", 0), 0) * 8,
         "wan_up_bps": max(result.get("rate_up", 0), 0) * 8,
+        "wan_down_bytes": max(result.get("bytes_down", 0), 0),
+        "wan_up_bytes": max(result.get("bytes_up", 0), 0),
         "sensors": sys_data.get("sensors", []),
         "fans": sys_data.get("fans", []),
         "ports": fetch_ports(session_token),
