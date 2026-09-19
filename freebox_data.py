@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Recuperation des donnees Freebox pour le dashboard web (retourne des dicts JSON-ready)."""
+import ipaddress
+
 import requests
 
 from freebox_api import BASE_URL, AuthRequired
@@ -41,25 +43,28 @@ def fetch_ports(session_token):
     return rows
 
 
+def _last_used_ipv6(connectivities, keep):
+    candidates = [c for c in connectivities if c.get("af") == "ipv6" and keep(c["addr"])]
+    if not candidates:
+        return "N/A"
+    # max() keeps the first of equal keys, so without last_activity we fall back to the first listed
+    return max(candidates, key=lambda c: c.get("last_activity", 0))["addr"]
+
+
 def fetch_devices(session_token):
     hosts = _get("/lan/browser/pub/", session_token)["result"]
 
     rows = []
     for h in hosts:
-        ipv4 = next(
-            (c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv4" and c.get("active")),
-            None,
-        )
+        conns = h.get("l3connectivities", [])
+        ipv4 = next((c["addr"] for c in conns if c.get("af") == "ipv4" and c.get("active")), None)
         if not ipv4:
             continue
-        ipv6 = next(
-            (c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv6" and c["addr"].startswith("fe80")),
-            "N/A",
-        )
         rows.append({
             "name": h.get("primary_name", "?"),
             "ipv4": ipv4,
-            "ipv6": ipv6,
+            "ipv6": _last_used_ipv6(conns, lambda a: a.startswith("fe80")),
+            "ipv6_global": _last_used_ipv6(conns, lambda a: ipaddress.ip_address(a).is_global),
             "type": h.get("host_type") or "N/A",
             "vendor": h.get("vendor_name") or "N/A",
         })

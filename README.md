@@ -20,7 +20,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 - Fréquence de rafraîchissement réglable depuis la page : 1, 3 ou 5 secondes.
 - En-tête : matériel, version de Freebox OS, état des services (Internet, Authentification, Téléphone), IPv4/IPv6, uptime et débit global.
 - Tableau des ports du switch avec lien actif (vitesse négociée, débit descendant/montant).
-- Tableau des appareils connectés (nom, IPv4, IPv6 locale, type sous forme d'icône, constructeur), triés par IPv4.
+- Tableau des appareils connectés (nom, IPv4, IPv6 locale, IPv6 globale, type sous forme d'icône, constructeur), triés par IPv4. Quand un appareil a plusieurs IPv6, celle affichée est la dernière utilisée (`last_activity`), à défaut la première de la liste.
 - Bandeau « DONNEES FIGEES » si les données ne sont plus mises à jour.
 
 **Moniteur terminal** (`fbxstat.py`) : mêmes informations, affichées et rafraîchies dans le terminal.

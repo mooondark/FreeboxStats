@@ -6,6 +6,7 @@ import time
 import requests
 
 from freebox_api import BASE_URL, get_app_token, open_session
+from freebox_data import fetch_devices
 
 
 def fmt_bytes_per_sec(bytes_per_sec):
@@ -18,25 +19,13 @@ def fmt_status(ok):
 
 
 def get_devices_table(session_token):
-    hosts = requests.get(f"{BASE_URL}/lan/browser/pub/", headers={"X-Fbx-App-Auth": session_token}).json()["result"]
+    rows = [
+        (d["name"], d["ipv4"], d["ipv6"], d["ipv6_global"], d["type"], d["vendor"])
+        for d in fetch_devices(session_token)
+    ]
 
-    rows = []
-    for h in hosts:
-        ipv4 = next((c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv4" and c.get("active")), "N/A")
-        ipv6 = next(
-            (c["addr"] for c in h.get("l3connectivities", []) if c.get("af") == "ipv6" and c["addr"].startswith("fe80")),
-            "N/A",
-        )
-        if ipv4 == "N/A":
-            continue
-        vendor = h.get("vendor_name") or "N/A"
-        host_type = h.get("host_type") or "N/A"
-        rows.append((h.get("primary_name", "?"), ipv4, ipv6, host_type, vendor))
-
-    rows.sort(key=lambda r: tuple(int(x) for x in r[1].split(".")))
-
-    header = ("Nom", "IPv4", "IPv6 locale", "Type", "Constructeur")
-    widths = [max(len(r[i]) for r in rows + [header]) for i in range(5)]
+    header = ("Nom", "IPv4", "IPv6 locale", "IPv6 globale", "Type", "Constructeur")
+    widths = [max(len(r[i]) for r in rows + [header]) for i in range(6)]
     lines = ["| " + " | ".join(h.ljust(w) for h, w in zip(header, widths)) + " |"]
     for r in rows:
         lines.append("| " + " | ".join(c.ljust(w) for c, w in zip(r, widths)) + " |")

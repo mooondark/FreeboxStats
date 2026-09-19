@@ -69,6 +69,41 @@ class TestFetchDevices(unittest.TestCase):
         self.assertEqual([d["name"] for d in devices], ["A", "B"])
         self.assertEqual(devices[0]["ipv4"], "192.168.1.5")
         self.assertEqual(devices[1]["ipv6"], "fe80::2")
+        self.assertEqual(devices[1]["ipv6_global"], "N/A")
+
+    @patch("freebox_data.requests.get")
+    def test_ipv6_picks_last_used_local_and_global(self, mock_get):
+        mock_get.return_value = _resp({"result": [{
+            "primary_name": "A",
+            "l3connectivities": [
+                {"af": "ipv4", "addr": "192.168.1.5", "active": True},
+                {"af": "ipv6", "addr": "fe80::a", "last_activity": 100},
+                {"af": "ipv6", "addr": "fe80::b", "last_activity": 300},
+                {"af": "ipv6", "addr": "2a01:e0a::1", "last_activity": 200},
+                {"af": "ipv6", "addr": "2a01:e0a::2", "last_activity": 250},
+                {"af": "ipv6", "addr": "fd00::1", "last_activity": 900},
+            ],
+        }]})
+
+        device = freebox_data.fetch_devices("session-token")[0]
+
+        self.assertEqual(device["ipv6"], "fe80::b")
+        self.assertEqual(device["ipv6_global"], "2a01:e0a::2")
+
+    @patch("freebox_data.requests.get")
+    def test_ipv6_falls_back_to_first_without_last_activity(self, mock_get):
+        mock_get.return_value = _resp({"result": [{
+            "primary_name": "A",
+            "l3connectivities": [
+                {"af": "ipv4", "addr": "192.168.1.5", "active": True},
+                {"af": "ipv6", "addr": "2a01:e0a::9"},
+                {"af": "ipv6", "addr": "2a01:e0a::8"},
+            ],
+        }]})
+
+        device = freebox_data.fetch_devices("session-token")[0]
+
+        self.assertEqual(device["ipv6_global"], "2a01:e0a::9")
 
 
 class TestFetchSnapshot(unittest.TestCase):

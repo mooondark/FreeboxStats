@@ -65,7 +65,7 @@
 <div class="card">
   <h3>Appareils</h3>
   <table>
-    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>Type</th><th>Constructeur</th></tr></thead>
+    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>IPv6 globale</th><th>Type</th><th>Constructeur</th></tr></thead>
     <tbody id="devices-body"></tbody>
   </table>
 </div>
@@ -87,14 +87,57 @@ function typeIcon(t) {
   return `<span title="${esc(t)}">${TYPE_ICONS[t] ?? "❔"}</span>`;
 }
 function esc(s) {
-  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  return String(s ?? "-").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
 let windowS = 60;
 let lastPoints = [];
 const timeAxis = { type: "linear", ticks: { maxTicksLimit: 7, callback: v => new Date(v * 1000).toLocaleTimeString() } };
 
+const maxLabels = {
+  id: "maxLabels",
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    const boxes = [];
+    ctx.save();
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    const pad = 4, h = 18;
+    const overlaps = (b, x, y, w) => x < b.x + b.w && b.x < x + w && y < b.y + h && b.y < y + h;
+    chart.data.datasets.forEach(ds => {
+      if (!ds.data.length) return;
+      const peak = ds.data.reduce((a, b) => (b.y > a.y ? b : a));
+      const px = scales.x.getPixelForValue(peak.x);
+      const py = scales[ds.yAxisID].getPixelForValue(peak.y);
+      const text = `${peak.y.toFixed(2)} Mb/s`;
+      const w = ctx.measureText(text).width + 2 * pad;
+      const y = Math.max(py - 8 - h, chartArea.top);
+      let x = Math.min(Math.max(px - w / 2, chartArea.left), chartArea.right - w);
+      const clash = boxes.find(b => overlaps(b, x, y, w));
+      if (clash) {
+        x = clash.x + clash.w + 4;
+        if (x + w > chartArea.right) x = Math.max(clash.x - w - 4, chartArea.left);
+      }
+      boxes.push({ x, y, w });
+      ctx.fillStyle = ds.borderColor;
+      ctx.beginPath();
+      ctx.arc(px, py, 3, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.fillStyle = "#1a1d24";
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = ds.borderColor;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = ds.borderColor;
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, x + pad, y + h / 2);
+    });
+    ctx.restore();
+  },
+};
+
 const wanChart = new Chart(document.getElementById("wan-chart"), {
+  plugins: [maxLabels],
   type: "line",
   data: { datasets: [
     { label: "Down (Mb/s)", data: [], yAxisID: "y", borderColor: "#3498db", tension: 0.2 },
@@ -104,8 +147,8 @@ const wanChart = new Chart(document.getElementById("wan-chart"), {
     animation: false, responsive: true,
     scales: {
       x: { ...timeAxis },
-      y: { type: "linear", position: "left", beginAtZero: true, title: { display: true, text: "Down (Mb/s)" } },
-      y1: { type: "linear", position: "right", beginAtZero: true, title: { display: true, text: "Up (Mb/s)" }, grid: { drawOnChartArea: false } },
+      y: { type: "linear", position: "left", beginAtZero: true, grace: "30%", title: { display: true, text: "Down (Mb/s)" } },
+      y1: { type: "linear", position: "right", beginAtZero: true, grace: "30%", title: { display: true, text: "Up (Mb/s)" }, grid: { drawOnChartArea: false } },
     },
   },
 });
@@ -149,7 +192,7 @@ function updateTables(snap) {
 
   const devicesBody = document.getElementById("devices-body");
   devicesBody.innerHTML = (snap.devices ?? []).map(d =>
-    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
+    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.ipv6_global)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
   ).join("");
 }
 
