@@ -8,8 +8,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 
 ## Aperçu
 
-<!-- Remplace la ligne ci-dessous par ton image, par exemple : ![Dashboard FbxStat](docs/dashboard.png) -->
-> Capture d'écran du dashboard à insérer ici.
+<img width="1912" height="1080" alt="image" src="https://github.com/user-attachments/assets/dc9e526a-79f8-4df2-b4f3-cd9c41a62c2b" />
 
 ## Fonctionnalités
 
@@ -44,8 +43,6 @@ python fbxstat_web.py
 ```
 
 Au **premier lancement**, l'application demande une autorisation à la Freebox : le message « Valide la demande sur l'ecran de la Freebox... » s'affiche, il faut alors valider la demande **sur l'écran de la Freebox**. Le jeton obtenu est ensuite enregistré dans `~/.fbxstat_token.json` et réutilisé automatiquement (le dashboard et le moniteur terminal partagent le même jeton).
-
-> **Attention :** ce fichier de jeton est un secret. Il est ignoré par Git (`.gitignore`) : ne le publie jamais. Si tu penses qu'il a fuité, révoque l'application « FbxStat » dans Freebox OS (Paramètres de la Freebox → Gestion des accès → Applications).
 
 ## Utilisation
 
