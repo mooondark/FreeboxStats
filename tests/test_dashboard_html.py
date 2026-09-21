@@ -23,5 +23,17 @@ class TestDashboardHtml(unittest.TestCase):
             self.assertIn(f'id="{el_id}"', HTML)
 
 
+class TestResponsive(unittest.TestCase):
+    def test_has_viewport_meta(self):
+        self.assertIn('<meta name="viewport" content="width=device-width, initial-scale=1">', HTML)
+
+    def test_tables_scroll_horizontally_on_narrow_screens(self):
+        self.assertEqual(HTML.count('<div class="table-wrap">'), 2)
+
+    def test_charts_have_a_sized_container(self):
+        self.assertEqual(HTML.count('<div class="chart-box">'), 2)
+        self.assertEqual(HTML.count("maintainAspectRatio: false"), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

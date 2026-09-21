@@ -2,6 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Freebox Dashboard</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <style>
@@ -17,14 +18,22 @@
   .header.stale .ok, .header.stale .ko { opacity: 0.4; }
   table { width: auto; margin: 0 auto; border-collapse: collapse; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2e37; }
-  canvas { max-height: 260px; }
+  .chart-box { position: relative; height: 260px; }
+  .table-wrap { overflow-x: auto; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: center; margin-bottom: 8px; }
   .btns button { background: #1a1d24; color: #e6e6e6; border: 1px solid #2a2e37; padding: 4px 12px; cursor: pointer; font-size: 13px; }
   .btns button:first-child { border-radius: 6px 0 0 6px; }
   .btns button:last-child { border-radius: 0 6px 6px 0; }
   .btns button.active { background: #3498db; border-color: #3498db; color: #fff; }
   .charts { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
-  .charts .card { flex: 1 1 400px; }
+  .charts .card { flex: 1 1 400px; min-width: 0; }
+  @media (max-width: 600px) {
+    body { padding: 8px; }
+    .card { padding: 10px; margin-bottom: 10px; }
+    .chart-box { height: 300px; }
+    .btns button { padding: 8px 14px; }
+    th, td { padding: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -53,24 +62,28 @@
 </div>
 
 <div class="charts">
-  <div class="card"><canvas id="wan-chart"></canvas></div>
-  <div class="card"><canvas id="temp-chart"></canvas></div>
+  <div class="card"><div class="chart-box"><canvas id="wan-chart"></canvas></div></div>
+  <div class="card"><div class="chart-box"><canvas id="temp-chart"></canvas></div></div>
 </div>
 
 <div class="card">
   <h3>Ports</h3>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Port</th><th>Vitesse</th><th>Down</th><th>Up</th><th>Total down</th><th>Total up</th></tr></thead>
     <tbody id="ports-body"></tbody>
   </table>
+  </div>
 </div>
 
 <div class="card">
   <h3>Appareils</h3>
+  <div class="table-wrap">
   <table>
     <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>IPv6 globale</th><th>Type</th><th>Constructeur</th></tr></thead>
     <tbody id="devices-body"></tbody>
   </table>
+  </div>
 </div>
 
 <script>
@@ -107,7 +120,10 @@ let paused = false;
 let pausedAt = 0;
 const LOG_FLOOR = 0.001;
 const timeAxis = { type: "linear", ticks: { maxTicksLimit: 7, callback: v => new Date(v * 1000).toLocaleTimeString() } };
-const timeTooltip = { tooltip: { callbacks: { title: items => new Date(items[0].parsed.x * 1000).toLocaleTimeString() } } };
+const chartPlugins = {
+  tooltip: { callbacks: { title: items => new Date(items[0].parsed.x * 1000).toLocaleTimeString() } },
+  legend: { labels: { usePointStyle: true, pointStyle: "line" } },
+};
 
 const maxLabels = {
   id: "maxLabels",
@@ -159,7 +175,7 @@ const wanChart = new Chart(document.getElementById("wan-chart"), {
     { label: "Up (Mb/s)", data: [], yAxisID: "y1", borderColor: "#e67e22", tension: 0.2 },
   ]},
   options: {
-    animation: false, responsive: true, plugins: timeTooltip,
+    animation: false, responsive: true, maintainAspectRatio: false, plugins: chartPlugins,
     scales: {
       x: { ...timeAxis },
       y: { type: "linear", position: "left", beginAtZero: true, grace: "30%", title: { display: true, text: "Down (Mb/s)" } },
@@ -172,7 +188,7 @@ const tempChart = new Chart(document.getElementById("temp-chart"), {
   type: "line",
   data: { datasets: [] },
   options: {
-    animation: false, responsive: true, plugins: timeTooltip,
+    animation: false, responsive: true, maintainAspectRatio: false, plugins: chartPlugins,
     scales: {
       x: { ...timeAxis },
       y: { type: "linear", position: "left", title: { display: true, text: "°C" } },
