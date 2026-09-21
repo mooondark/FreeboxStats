@@ -158,6 +158,35 @@ def browser_url(host, port):
     return http_url("127.0.0.1" if host in ("0.0.0.0", "::") else host, port)
 
 
+def primary_ipv4():
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.0.2.1", 9))  # TEST-NET address: picks the default route, sends nothing
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
+def link_local_ipv6():
+    try:
+        infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6)
+    except OSError:
+        return []
+    return sorted({i[4][0].split("%")[0] for i in infos if i[4][0].startswith("fe80")})
+
+
+def lan_urls(host, port):
+    if host not in ("0.0.0.0", "::"):
+        return []
+    urls = []
+    ipv4 = primary_ipv4()
+    if ipv4:
+        urls.append(("IPv4", http_url(ipv4, port)))
+    if host == "::":
+        urls += [("IPv6", http_url(a, port)) for a in link_local_ipv6()]
+    return urls
+
+
 def make_server(host, port):
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
 
@@ -187,6 +216,8 @@ def main():
 
     server = make_server(args.host, args.port)
     print(f"Dashboard sur {http_url(args.host, args.port)}")
+    for label, url in lan_urls(args.host, args.port):
+        print(f"  {label} : {url}")
     if not args.no_browser:
         webbrowser.open(browser_url(args.host, args.port))
     server.serve_forever()

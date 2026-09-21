@@ -50,6 +50,54 @@ class TestArgParser(unittest.TestCase):
         self.assertEqual(args.port, 8000)
 
 
+class TestLanUrls(unittest.TestCase):
+    def _patched(self, ipv4, ipv6):
+        return mock.patch.multiple(
+            fbxstat_web, primary_ipv4=lambda: ipv4, link_local_ipv6=lambda: ipv6
+        )
+
+    def test_ipv4_wildcard_lists_only_the_ipv4_url(self):
+        with self._patched("192.168.1.96", ["fe80::1"]):
+            self.assertEqual(
+                fbxstat_web.lan_urls("0.0.0.0", 8000),
+                [("IPv4", "http://192.168.1.96:8000")],
+            )
+
+    def test_ipv6_wildcard_lists_ipv4_and_link_local_ipv6(self):
+        with self._patched("192.168.1.96", ["fe80::1", "fe80::2"]):
+            self.assertEqual(
+                fbxstat_web.lan_urls("::", 8000),
+                [
+                    ("IPv4", "http://192.168.1.96:8000"),
+                    ("IPv6", "http://[fe80::1]:8000"),
+                    ("IPv6", "http://[fe80::2]:8000"),
+                ],
+            )
+
+    def test_specific_or_loopback_host_lists_nothing(self):
+        with self._patched("192.168.1.96", ["fe80::1"]):
+            self.assertEqual(fbxstat_web.lan_urls("127.0.0.1", 8000), [])
+            self.assertEqual(fbxstat_web.lan_urls("192.168.1.96", 8000), [])
+
+    def test_missing_ipv4_is_skipped(self):
+        with self._patched(None, ["fe80::1"]):
+            self.assertEqual(fbxstat_web.lan_urls("::", 8000), [("IPv6", "http://[fe80::1]:8000")])
+
+    def test_link_local_ipv6_keeps_only_unique_fe80_without_zone(self):
+        infos = [
+            (socket.AF_INET6, 0, 0, "", ("fe80::a%12", 0, 0, 12)),
+            (socket.AF_INET6, 0, 0, "", ("fe80::a%13", 0, 0, 13)),
+            (socket.AF_INET6, 0, 0, "", ("fe80::b", 0, 0, 0)),
+            (socket.AF_INET6, 0, 0, "", ("2a01:e0a::1", 0, 0, 0)),
+        ]
+        with mock.patch.object(fbxstat_web.socket, "getaddrinfo", return_value=infos):
+            self.assertEqual(fbxstat_web.link_local_ipv6(), ["fe80::a", "fe80::b"])
+
+    def test_link_local_ipv6_survives_lookup_error(self):
+        with mock.patch.object(fbxstat_web.socket, "getaddrinfo", side_effect=OSError):
+            self.assertEqual(fbxstat_web.link_local_ipv6(), [])
+
+
 def _ipv6_available():
     try:
         with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
