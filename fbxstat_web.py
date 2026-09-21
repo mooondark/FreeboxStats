@@ -3,6 +3,7 @@
 import argparse
 import collections
 import http.server
+import ipaddress
 import json
 import os
 import socket
@@ -17,6 +18,7 @@ from freebox_data import fetch_snapshot
 DASHBOARD_HTML_PATH = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
 
 INTERVAL = 3.0
+IF_INET6_PATH = "/proc/net/if_inet6"
 ALLOWED_INTERVALS = (1, 3, 5)
 STATE_LOCK = threading.Lock()
 STATE = {"snapshot": None, "snapshot_t": None, "history": None}
@@ -168,11 +170,22 @@ def primary_ipv4():
 
 
 def link_local_ipv6():
+    found = set()
     try:
         infos = socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET6)
+        found.update(i[4][0].split("%")[0] for i in infos if i[4][0].startswith("fe80"))
     except OSError:
-        return []
-    return sorted({i[4][0].split("%")[0] for i in infos if i[4][0].startswith("fe80")})
+        pass
+    # Linux: getaddrinfo(hostname) only reflects /etc/hosts, the kernel table lists the real interfaces
+    try:
+        with open(IF_INET6_PATH) as f:
+            for line in f:
+                raw = line.split()[0]
+                if raw.startswith("fe80"):
+                    found.add(ipaddress.IPv6Address(int(raw, 16)).compressed)
+    except (OSError, IndexError):
+        pass
+    return sorted(found)
 
 
 def lan_urls(host, port):

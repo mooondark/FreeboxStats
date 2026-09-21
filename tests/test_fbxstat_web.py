@@ -91,11 +91,30 @@ class TestLanUrls(unittest.TestCase):
             (socket.AF_INET6, 0, 0, "", ("2a01:e0a::1", 0, 0, 0)),
         ]
         with mock.patch.object(fbxstat_web.socket, "getaddrinfo", return_value=infos):
-            self.assertEqual(fbxstat_web.link_local_ipv6(), ["fe80::a", "fe80::b"])
+            with mock.patch.object(fbxstat_web, "IF_INET6_PATH", "/nonexistent"):
+                self.assertEqual(fbxstat_web.link_local_ipv6(), ["fe80::a", "fe80::b"])
 
     def test_link_local_ipv6_survives_lookup_error(self):
         with mock.patch.object(fbxstat_web.socket, "getaddrinfo", side_effect=OSError):
-            self.assertEqual(fbxstat_web.link_local_ipv6(), [])
+            with mock.patch.object(fbxstat_web, "IF_INET6_PATH", "/nonexistent"):
+                self.assertEqual(fbxstat_web.link_local_ipv6(), [])
+
+    def test_link_local_ipv6_reads_proc_net_if_inet6_on_linux(self):
+        content = (
+            "00000000000000000000000000000001 01 80 10 80       lo\n"
+            "fe80000000000000f816a3fffe2b5e6d 02 40 20 80     eth0\n"
+            "2a010e0a0a2596a0f816a3fffe2b5e6d 02 40 00 80     eth0\n"
+            "fe80000000000000021122fffe334455 05 40 20 80  docker0\n"
+        )
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write(content)
+        self.addCleanup(os.unlink, f.name)
+        with mock.patch.object(fbxstat_web.socket, "getaddrinfo", side_effect=OSError):
+            with mock.patch.object(fbxstat_web, "IF_INET6_PATH", f.name):
+                self.assertEqual(
+                    fbxstat_web.link_local_ipv6(),
+                    ["fe80::211:22ff:fe33:4455", "fe80::f816:a3ff:fe2b:5e6d"],
+                )
 
 
 def _ipv6_available():
