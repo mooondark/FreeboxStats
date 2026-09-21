@@ -5,6 +5,7 @@ import collections
 import http.server
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -149,10 +150,27 @@ def build_arg_parser():
     return parser
 
 
+def http_url(host, port):
+    return f"http://[{host}]:{port}" if ":" in host else f"http://{host}:{port}"
+
+
 def browser_url(host, port):
-    if host in ("0.0.0.0", "::"):
-        host = "127.0.0.1"
-    return f"http://{host}:{port}"
+    return http_url("127.0.0.1" if host in ("0.0.0.0", "::") else host, port)
+
+
+def make_server(host, port):
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+
+    class Server(http.server.ThreadingHTTPServer):
+        address_family = family
+
+        def server_bind(self):
+            if family == socket.AF_INET6:
+                # "::" then accepts IPv4 clients too (dual-stack)
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            super().server_bind()
+
+    return Server((host, port), Handler)
 
 
 def main():
@@ -167,8 +185,8 @@ def main():
     app_token = get_app_token()
     threading.Thread(target=collect_loop, args=(app_token,), daemon=True).start()
 
-    server = http.server.ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Dashboard sur http://{args.host}:{args.port}")
+    server = make_server(args.host, args.port)
+    print(f"Dashboard sur {http_url(args.host, args.port)}")
     if not args.no_browser:
         webbrowser.open(browser_url(args.host, args.port))
     server.serve_forever()

@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import socket
 import tempfile
 import threading
 import unittest
@@ -38,10 +39,46 @@ class TestArgParser(unittest.TestCase):
         self.assertEqual(fbxstat_web.browser_url("::", 8000), "http://127.0.0.1:8000")
         self.assertEqual(fbxstat_web.browser_url("192.168.1.10", 9000), "http://192.168.1.10:9000")
 
+    def test_browser_url_brackets_ipv6_literal(self):
+        self.assertEqual(fbxstat_web.browser_url("::1", 8000), "http://[::1]:8000")
+        self.assertEqual(fbxstat_web.browser_url("2a01:e0a::1", 9000), "http://[2a01:e0a::1]:9000")
+
     def test_default_host_is_localhost(self):
         args = fbxstat_web.build_arg_parser().parse_args([])
         self.assertEqual(args.host, "127.0.0.1")
         self.assertEqual(args.port, 8000)
+
+
+def _ipv6_available():
+    try:
+        with socket.socket(socket.AF_INET6, socket.SOCK_STREAM) as s:
+            s.bind(("::1", 0))
+        return True
+    except OSError:
+        return False
+
+
+class TestMakeServer(unittest.TestCase):
+    def test_family_follows_host(self):
+        server = fbxstat_web.make_server("127.0.0.1", 0)
+        self.addCleanup(server.server_close)
+        self.assertEqual(server.address_family, socket.AF_INET)
+
+    @unittest.skipUnless(_ipv6_available(), "IPv6 loopback unavailable")
+    def test_ipv6_wildcard_serves_both_ipv6_and_ipv4(self):
+        server = fbxstat_web.make_server("::", 0)
+        self.assertEqual(server.address_family, socket.AF_INET6)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        for host in ("::1", "127.0.0.1"):
+            conn = http.client.HTTPConnection(host, port, timeout=5)
+            conn.request("GET", "/nope")
+            self.assertEqual(conn.getresponse().status, 404, host)
+            conn.close()
 
 
 class TestMainIntervalValidation(unittest.TestCase):
