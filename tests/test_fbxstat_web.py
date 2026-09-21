@@ -274,10 +274,24 @@ class TestCollectLoop(unittest.TestCase):
         self._orig_state = fbxstat_web.STATE
         fbxstat_web.STATE_LOCK = threading.Lock()
         fbxstat_web.STATE = {"snapshot": None, "history": fbxstat_web.History(maxlen=10)}
+        patcher = mock.patch.object(fbxstat_web, "wait_for_viewer")
+        self.wait_mock = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         fbxstat_web.STATE_LOCK = self._orig_state_lock
         fbxstat_web.STATE = self._orig_state
+
+    def test_waits_for_a_viewer_before_every_tick(self):
+        snapshot = {"wan_down_bps": 1.0, "wan_up_bps": 2.0, "sensors": {}, "fans": {}}
+        with mock.patch.object(fbxstat_web, "open_session", return_value="tok"), \
+                mock.patch.object(fbxstat_web, "fetch_snapshot", return_value=snapshot) as mock_fetch, \
+                mock.patch.object(fbxstat_web.time, "sleep", side_effect=[None, _StopLoop()]):
+            with self.assertRaises(_StopLoop):
+                fbxstat_web.collect_loop("app-token")
+
+        self.assertEqual(mock_fetch.call_count, 2)
+        self.assertEqual(self.wait_mock.call_count, 2)
 
     def test_reauth_failure_is_caught_and_loop_keeps_ticking(self):
         snapshot = {
@@ -311,6 +325,84 @@ class TestCollectLoop(unittest.TestCase):
                 fbxstat_web.collect_loop("app-token")
 
         self.assertEqual(fbxstat_web.STATE["snapshot_t"], 999.0)
+
+
+class TestViewerActivity(unittest.TestCase):
+    def setUp(self):
+        self._saved = {k: getattr(fbxstat_web, k) for k in ("STATE_LOCK", "STATE", "LAST_ACTIVITY", "IDLE_AFTER")}
+        fbxstat_web.STATE_LOCK = threading.Lock()
+        fbxstat_web.STATE = {"snapshot": {"model": "x"}, "snapshot_t": 1.0, "history": fbxstat_web.History(maxlen=10)}
+        fbxstat_web.STATE["history"].add({"t": 1})
+        fbxstat_web.IDLE_AFTER = 15.0
+        self.threads = []
+
+    def tearDown(self):
+        fbxstat_web.touch()  # release any thread still waiting
+        for t in self.threads:
+            t.join(timeout=2)
+        for k, v in self._saved.items():
+            setattr(fbxstat_web, k, v)
+
+    def _wait_in_thread(self):
+        done = threading.Event()
+        t = threading.Thread(target=lambda: (fbxstat_web.wait_for_viewer(), done.set()), daemon=True)
+        t.start()
+        self.threads.append(t)
+        return done
+
+    def test_touch_records_the_time(self):
+        fbxstat_web.LAST_ACTIVITY = 0.0
+        fbxstat_web.touch()
+        self.assertGreater(fbxstat_web.LAST_ACTIVITY, 0.0)
+
+    def test_does_not_wait_while_a_viewer_is_active(self):
+        fbxstat_web.touch()
+        self.assertTrue(self._wait_in_thread().wait(1))
+        self.assertEqual(fbxstat_web.STATE["snapshot"], {"model": "x"})
+
+    def test_idle_blocks_clears_data_and_a_touch_wakes_it(self):
+        fbxstat_web.LAST_ACTIVITY = 0.0
+        done = self._wait_in_thread()
+
+        self.assertFalse(done.wait(0.3))
+        self.assertIsNone(fbxstat_web.STATE["snapshot"])
+        self.assertIsNone(fbxstat_web.STATE["snapshot_t"])
+        self.assertEqual(fbxstat_web.STATE["history"].to_list(), [])
+
+        fbxstat_web.touch()
+        self.assertTrue(done.wait(2))
+
+
+class TestHandlerTouches(unittest.TestCase):
+    def test_get_requests_count_as_viewer_activity(self):
+        fbxstat_web.STATE_LOCK = threading.Lock()
+        fbxstat_web.STATE = {"snapshot": None, "history": fbxstat_web.History(maxlen=10)}
+        server = HTTPServer(("127.0.0.1", 0), fbxstat_web.Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        saved = fbxstat_web.LAST_ACTIVITY
+        self.addCleanup(setattr, fbxstat_web, "LAST_ACTIVITY", saved)
+
+        for path in ("/", "/api/snapshot", "/api/history"):
+            fbxstat_web.LAST_ACTIVITY = 0.0
+            conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
+            conn.request("GET", path)
+            conn.getresponse().read()
+            conn.close()
+            self.assertGreater(fbxstat_web.LAST_ACTIVITY, 0.0, path)
+
+
+class TestHistoryClear(unittest.TestCase):
+    def test_clear_empties_the_buffer_but_keeps_maxlen(self):
+        history = fbxstat_web.History(maxlen=2)
+        history.add({"t": 1})
+        history.clear()
+        self.assertEqual(history.to_list(), [])
+        for i in range(5):
+            history.add({"t": i})
+        self.assertEqual([p["t"] for p in history.to_list()], [3, 4])
 
 
 if __name__ == "__main__":

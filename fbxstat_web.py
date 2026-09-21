@@ -20,6 +20,9 @@ DASHBOARD_HTML_PATH = os.path.join(os.path.dirname(__file__), "templates", "dash
 INTERVAL = 3.0
 IF_INET6_PATH = "/proc/net/if_inet6"
 ALLOWED_INTERVALS = (1, 3, 5)
+IDLE_AFTER = 15.0
+LAST_ACTIVITY = 0.0
+ACTIVITY = threading.Event()
 STATE_LOCK = threading.Lock()
 STATE = {"snapshot": None, "snapshot_t": None, "history": None}
 
@@ -34,10 +37,33 @@ class History:
     def to_list(self):
         return list(self._data)
 
+    def clear(self):
+        self._data.clear()
+
+
+def touch():
+    global LAST_ACTIVITY
+    LAST_ACTIVITY = time.time()
+    ACTIVITY.set()
+
+
+def wait_for_viewer():
+    """Block while nobody has asked for data for IDLE_AFTER seconds (no polling of the Freebox)."""
+    while time.time() - LAST_ACTIVITY > IDLE_AFTER:
+        with STATE_LOCK:
+            STATE["snapshot"] = None
+            STATE["snapshot_t"] = None
+            STATE["history"].clear()
+        ACTIVITY.clear()
+        if time.time() - LAST_ACTIVITY <= IDLE_AFTER:  # a request slipped in before the clear
+            break
+        ACTIVITY.wait()
+
 
 def collect_loop(app_token):
     session_token = None
     while True:
+        wait_for_viewer()
         if session_token is None:
             try:
                 session_token = open_session(app_token)
@@ -77,6 +103,8 @@ def collect_loop(app_token):
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
+        if self.path in ("/", "/api/snapshot", "/api/history"):
+            touch()
         if self.path == "/":
             self._serve_file(DASHBOARD_HTML_PATH, "text/html")
         elif self.path == "/api/snapshot":

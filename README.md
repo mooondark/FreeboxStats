@@ -62,7 +62,9 @@ Le navigateur par défaut s'ouvre automatiquement sur <http://127.0.0.1:8000> (d
 | `--port`     | `8000`      | Port d'écoute                                                      |
 | `--no-browser` | (désactivé) | Ne pas ouvrir le navigateur au démarrage                         |
 
-L'historique (600 relevés au maximum) est conservé en mémoire : il est perdu à l'arrêt du serveur.
+Le serveur **n'interroge la Freebox que lorsqu'une page est ouverte** : au bout de 15 secondes sans requête de la page (page fermée, ou bouton Pause), la collecte s'arrête complètement et les données en mémoire sont effacées. Elle reprend dès qu'une page se rouvre, donc l'historique des graphiques repart de zéro à chaque ouverture. Le serveur peut ainsi rester allumé en permanence sans solliciter la box.
+
+L'historique (600 relevés au maximum) est conservé en mémoire : il est aussi perdu à l'arrêt du serveur.
 
 > **Sécurité :** le dashboard n'a pas d'authentification et expose la liste de tes appareils. Par défaut il n'écoute que sur `127.0.0.1` ; n'utilise `--host 0.0.0.0` que sur un réseau de confiance.
 
