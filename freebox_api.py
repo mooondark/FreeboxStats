@@ -14,6 +14,8 @@ APP_VERSION = "1.01"
 DEVICE_NAME = "fbxstat"
 TOKEN_FILE = os.path.expanduser("~/.fbxstat_token.json")
 BASE_URL = "http://mafreebox.freebox.fr/api/v8"
+# One keep-alive connection: DNS + TCP are paid once instead of on every request
+http = requests.Session()
 
 
 class AuthRequired(Exception):
@@ -21,7 +23,7 @@ class AuthRequired(Exception):
 
 
 def register_app():
-    resp = requests.post(f"{BASE_URL}/login/authorize/", json={
+    resp = http.post(f"{BASE_URL}/login/authorize/", json={
         "app_id": APP_ID,
         "app_name": APP_NAME,
         "app_version": APP_VERSION,
@@ -31,7 +33,7 @@ def register_app():
 
     print("Valide la demande sur l'ecran de la Freebox...")
     while True:
-        status = requests.get(f"{BASE_URL}/login/authorize/{track_id}", timeout=10).json()["result"]["status"]
+        status = http.get(f"{BASE_URL}/login/authorize/{track_id}", timeout=10).json()["result"]["status"]
         if status == "granted":
             break
         if status in ("denied", "timeout"):
@@ -51,9 +53,9 @@ def get_app_token():
 
 
 def open_session(app_token):
-    challenge = requests.get(f"{BASE_URL}/login/", timeout=10).json()["result"]["challenge"]
+    challenge = http.get(f"{BASE_URL}/login/", timeout=10).json()["result"]["challenge"]
     password = hmac.new(app_token.encode(), challenge.encode(), hashlib.sha1).hexdigest()
-    resp = requests.post(f"{BASE_URL}/login/session/", json={
+    resp = http.post(f"{BASE_URL}/login/session/", json={
         "app_id": APP_ID,
         "password": password,
     }, timeout=10).json()

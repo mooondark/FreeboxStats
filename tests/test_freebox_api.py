@@ -16,8 +16,8 @@ class TestGetAppToken(unittest.TestCase):
 
 
 class TestOpenSession(unittest.TestCase):
-    @patch("freebox_api.requests.post")
-    @patch("freebox_api.requests.get")
+    @patch("freebox_api.http.post")
+    @patch("freebox_api.http.get")
     def test_success_returns_session_token(self, mock_get, mock_post):
         mock_get.return_value = MagicMock(json=lambda: {"result": {"challenge": "chal"}})
         mock_post.return_value = MagicMock(json=lambda: {
@@ -30,8 +30,8 @@ class TestOpenSession(unittest.TestCase):
         self.assertEqual(token, "sess-token")
         mock_post.assert_called_once()
 
-    @patch("freebox_api.requests.post")
-    @patch("freebox_api.requests.get")
+    @patch("freebox_api.http.post")
+    @patch("freebox_api.http.get")
     def test_failure_raises_runtime_error(self, mock_get, mock_post):
         mock_get.return_value = MagicMock(json=lambda: {"result": {"challenge": "chal"}})
         mock_post.return_value = MagicMock(json=lambda: {
@@ -46,8 +46,8 @@ class TestOpenSession(unittest.TestCase):
 class TestRegisterApp(unittest.TestCase):
     @patch("freebox_api.time.sleep")
     @patch("builtins.open", new_callable=mock_open)
-    @patch("freebox_api.requests.get")
-    @patch("freebox_api.requests.post")
+    @patch("freebox_api.http.get")
+    @patch("freebox_api.http.post")
     def test_polls_until_granted_then_saves_token(self, mock_post, mock_get, mock_file, mock_sleep):
         mock_post.return_value = MagicMock(json=lambda: {
             "result": {"app_token": "new-token", "track_id": 42},
@@ -65,8 +65,8 @@ class TestRegisterApp(unittest.TestCase):
         mock_file().write.assert_called()
 
     @patch("freebox_api.time.sleep")
-    @patch("freebox_api.requests.get")
-    @patch("freebox_api.requests.post")
+    @patch("freebox_api.http.get")
+    @patch("freebox_api.http.post")
     def test_raises_on_timeout(self, mock_post, mock_get, mock_sleep):
         mock_post.return_value = MagicMock(json=lambda: {
             "result": {"app_token": "new-token", "track_id": 42},
@@ -75,6 +75,15 @@ class TestRegisterApp(unittest.TestCase):
 
         with self.assertRaises(RuntimeError):
             freebox_api.register_app()
+
+
+class TestSharedHttpSession(unittest.TestCase):
+    def test_one_persistent_session_is_shared_by_every_module(self):
+        import freebox_data
+        import requests
+
+        self.assertIsInstance(freebox_api.http, requests.Session)
+        self.assertIs(freebox_data.http, freebox_api.http)
 
 
 if __name__ == "__main__":

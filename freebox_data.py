@@ -2,9 +2,7 @@
 """Recuperation des donnees Freebox pour le dashboard web (retourne des dicts JSON-ready)."""
 import ipaddress
 
-import requests
-
-from freebox_api import BASE_URL, AuthRequired
+from freebox_api import BASE_URL, AuthRequired, http
 
 SPEED_LABELS = {
     "10000": "10G",
@@ -16,7 +14,7 @@ SPEED_LABELS = {
 
 
 def _get(path, session_token):
-    return requests.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}, timeout=10).json()
+    return http.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}, timeout=10).json()
 
 
 def fetch_ports(session_token):

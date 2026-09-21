@@ -3,9 +3,7 @@
 import sys
 import time
 
-import requests
-
-from freebox_api import BASE_URL, get_app_token, open_session
+from freebox_api import BASE_URL, get_app_token, http, open_session
 from freebox_data import fetch_devices, fetch_ports
 
 
@@ -65,7 +63,7 @@ def main():
 
     n_lines = 0
     while True:
-        r = requests.get(f"{BASE_URL}/connection/", headers={"X-Fbx-App-Auth": session_token})
+        r = http.get(f"{BASE_URL}/connection/", headers={"X-Fbx-App-Auth": session_token})
         data = r.json()
 
         if not data.get("success") and data.get("error_code") == "auth_required":
@@ -76,8 +74,8 @@ def main():
         down = fmt_bytes_per_sec(result["rate_down"])
         up = fmt_bytes_per_sec(result["rate_up"])
 
-        sys_data = requests.get(f"{BASE_URL}/system/", headers={"X-Fbx-App-Auth": session_token}).json()["result"]
-        phone_data = requests.get(f"{BASE_URL}/phone/", headers={"X-Fbx-App-Auth": session_token}).json()["result"]
+        sys_data = http.get(f"{BASE_URL}/system/", headers={"X-Fbx-App-Auth": session_token}).json()["result"]
+        phone_data = http.get(f"{BASE_URL}/phone/", headers={"X-Fbx-App-Auth": session_token}).json()["result"]
 
         internet_ok = result.get("state") == "up"
         auth_ok = sys_data.get("box_authenticated", False)

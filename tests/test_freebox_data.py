@@ -10,7 +10,7 @@ def _resp(payload):
 
 
 class TestFetchPorts(unittest.TestCase):
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_skips_down_links_and_maps_speed(self, mock_get):
         def side_effect(url, headers=None, timeout=None):
             if url.endswith("/switch/status/"):
@@ -41,7 +41,7 @@ class TestFetchPorts(unittest.TestCase):
 
 
 class TestFetchDevices(unittest.TestCase):
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_filters_and_sorts_by_ipv4(self, mock_get):
         mock_get.return_value = _resp({"result": [
             {
@@ -76,7 +76,7 @@ class TestFetchDevices(unittest.TestCase):
         self.assertEqual(devices[1]["ipv6"], "fe80::2")
         self.assertEqual(devices[1]["ipv6_global"], "N/A")
 
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_ipv6_picks_last_used_local_and_global(self, mock_get):
         mock_get.return_value = _resp({"result": [{
             "primary_name": "A",
@@ -95,7 +95,7 @@ class TestFetchDevices(unittest.TestCase):
         self.assertEqual(device["ipv6"], "fe80::b")
         self.assertEqual(device["ipv6_global"], "2a01:e0a::2")
 
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_ipv6_falls_back_to_first_without_last_activity(self, mock_get):
         mock_get.return_value = _resp({"result": [{
             "primary_name": "A",
@@ -114,7 +114,7 @@ class TestFetchDevices(unittest.TestCase):
 class TestFetchSnapshot(unittest.TestCase):
     @patch("freebox_data.fetch_devices", return_value=[])
     @patch("freebox_data.fetch_ports", return_value=[])
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_raises_auth_required(self, mock_get, mock_ports, mock_devices):
         mock_get.return_value = _resp({"success": False, "error_code": "auth_required"})
 
@@ -123,7 +123,7 @@ class TestFetchSnapshot(unittest.TestCase):
 
     @patch("freebox_data.fetch_devices", return_value=[{"name": "A"}])
     @patch("freebox_data.fetch_ports", return_value=[{"port": "1"}])
-    @patch("freebox_data.requests.get")
+    @patch("freebox_data.http.get")
     def test_builds_full_snapshot(self, mock_get, mock_ports, mock_devices):
         def side_effect(url, headers=None, timeout=None):
             if url.endswith("/connection/"):
