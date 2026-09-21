@@ -57,7 +57,7 @@ Le navigateur par défaut s'ouvre automatiquement sur <http://127.0.0.1:8000> (d
 
 | Option       | Défaut      | Description                                                        |
 |--------------|-------------|--------------------------------------------------------------------|
-| `--interval` | `1`         | Secondes entre deux relevés (modifiable ensuite depuis la page)    |
+| `--interval` | `3`         | Secondes entre deux relevés (modifiable ensuite depuis la page)    |
 | `--host`     | `127.0.0.1` | Adresse d'écoute : `0.0.0.0` (LAN en IPv4), `::` (IPv6 **et** IPv4) ou `::1` (IPv6 local) |
 | `--port`     | `8000`      | Port d'écoute                                                      |
 | `--no-browser` | (désactivé) | Ne pas ouvrir le navigateur au démarrage                         |

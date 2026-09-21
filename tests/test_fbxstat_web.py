@@ -21,9 +21,10 @@ class TestHistory(unittest.TestCase):
 
 
 class TestArgParser(unittest.TestCase):
-    def test_default_interval_is_one_second(self):
+    def test_default_interval_is_three_seconds(self):
         args = fbxstat_web.build_arg_parser().parse_args([])
-        self.assertEqual(args.interval, 1.0)
+        self.assertEqual(args.interval, 3.0)
+        self.assertIn(args.interval, fbxstat_web.ALLOWED_INTERVALS)
 
     def test_interval_can_be_overridden(self):
         args = fbxstat_web.build_arg_parser().parse_args(["--interval", "5"])

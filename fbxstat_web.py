@@ -16,7 +16,7 @@ from freebox_data import fetch_snapshot
 
 DASHBOARD_HTML_PATH = os.path.join(os.path.dirname(__file__), "templates", "dashboard.html")
 
-INTERVAL = 1.0
+INTERVAL = 3.0
 ALLOWED_INTERVALS = (1, 3, 5)
 STATE_LOCK = threading.Lock()
 STATE = {"snapshot": None, "snapshot_t": None, "history": None}
@@ -143,7 +143,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description="Dashboard web Freebox")
-    parser.add_argument("--interval", type=float, default=1.0, help="secondes entre deux rafraichissements")
+    parser.add_argument("--interval", type=float, default=3.0, help="secondes entre deux rafraichissements")
     parser.add_argument("--host", default="127.0.0.1", help="adresse d'ecoute (0.0.0.0 pour tout le LAN)")
     parser.add_argument("--port", type=int, default=8000, help="port d'ecoute")
     parser.add_argument("--no-browser", action="store_true", help="ne pas ouvrir le navigateur au demarrage")
