@@ -7,6 +7,7 @@ import ipaddress
 import json
 import os
 import socket
+import ssl
 import sys
 import threading
 import time
@@ -177,15 +178,19 @@ def build_arg_parser():
     parser.add_argument("--host", default="127.0.0.1", help="adresse d'ecoute (0.0.0.0 pour tout le LAN)")
     parser.add_argument("--port", type=int, default=8000, help="port d'ecoute")
     parser.add_argument("--no-browser", action="store_true", help="ne pas ouvrir le navigateur au demarrage")
+    parser.add_argument(
+        "--https", action="store_true",
+        help="servir en HTTPS avec un certificat auto-signe (necessaire pour l'ecran toujours allume sur mobile)",
+    )
     return parser
 
 
-def http_url(host, port):
-    return f"http://[{host}]:{port}" if ":" in host else f"http://{host}:{port}"
+def http_url(host, port, scheme="http"):
+    return f"{scheme}://[{host}]:{port}" if ":" in host else f"{scheme}://{host}:{port}"
 
 
-def browser_url(host, port):
-    return http_url("127.0.0.1" if host in ("0.0.0.0", "::") else host, port)
+def browser_url(host, port, scheme="http"):
+    return http_url("127.0.0.1" if host in ("0.0.0.0", "::") else host, port, scheme)
 
 
 def primary_ipv4():
@@ -216,19 +221,92 @@ def link_local_ipv6():
     return sorted(found)
 
 
-def lan_urls(host, port):
+def lan_urls(host, port, scheme="http"):
     if host not in ("0.0.0.0", "::"):
         return []
     urls = []
     ipv4 = primary_ipv4()
     if ipv4:
-        urls.append(("IPv4", http_url(ipv4, port)))
+        urls.append(("IPv4", http_url(ipv4, port, scheme)))
     if host == "::":
-        urls += [("IPv6", http_url(a, port)) for a in link_local_ipv6()]
+        urls += [("IPv6", http_url(a, port, scheme)) for a in link_local_ipv6()]
     return urls
 
 
-def make_server(host, port):
+def build_sans():
+    sans = ["127.0.0.1", "::1", "localhost"]
+    ipv4 = primary_ipv4()
+    if ipv4:
+        sans.append(ipv4)
+    sans += link_local_ipv6()
+    return sans
+
+
+def cert_paths():
+    cert_dir = os.path.expanduser("~/.fbxstat_cert")
+    return (
+        os.path.join(cert_dir, "cert.pem"),
+        os.path.join(cert_dir, "key.pem"),
+        os.path.join(cert_dir, "meta.json"),
+    )
+
+
+def ensure_self_signed_cert(sans):
+    """Reuse the cached self-signed cert if it already covers `sans`, else (re)generate it."""
+    cert_path, key_path, meta_path = cert_paths()
+    if all(os.path.exists(p) for p in (cert_path, key_path, meta_path)):
+        try:
+            with open(meta_path) as f:
+                if json.load(f).get("sans") == sans:
+                    return cert_path, key_path
+        except (OSError, ValueError):
+            pass
+
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "FbxStat")])
+    alt_names = []
+    for s in sans:
+        try:
+            alt_names.append(x509.IPAddress(ipaddress.ip_address(s)))
+        except ValueError:
+            alt_names.append(x509.DNSName(s))
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now)
+        .not_valid_after(now + datetime.timedelta(days=3650))
+        .add_extension(x509.SubjectAlternativeName(alt_names), critical=False)
+        .sign(key, hashes.SHA256())
+    )
+
+    os.makedirs(os.path.dirname(cert_path), exist_ok=True)
+    with open(key_path, "wb") as f:
+        f.write(key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.TraditionalOpenSSL,
+            serialization.NoEncryption(),
+        ))
+    os.chmod(key_path, 0o600)
+    with open(cert_path, "wb") as f:
+        f.write(cert.public_bytes(serialization.Encoding.PEM))
+    with open(meta_path, "w") as f:
+        json.dump({"sans": sans}, f)
+
+    return cert_path, key_path
+
+
+def make_server(host, port, ssl_context=None):
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
 
     class Server(http.server.ThreadingHTTPServer):
@@ -239,6 +317,12 @@ def make_server(host, port):
                 # "::" then accepts IPv4 clients too (dual-stack)
                 self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             super().server_bind()
+
+        def get_request(self):
+            sock, addr = super().get_request()
+            if ssl_context is not None:
+                sock = ssl_context.wrap_socket(sock, server_side=True)
+            return sock, addr
 
     return Server((host, port), Handler)
 
@@ -255,12 +339,25 @@ def main():
     app_token = get_app_token()
     threading.Thread(target=collect_loop, args=(app_token,), daemon=True).start()
 
-    server = make_server(args.host, args.port)
-    print(f"Dashboard sur {http_url(args.host, args.port)}")
-    for label, url in lan_urls(args.host, args.port):
+    ssl_context = None
+    scheme = "http"
+    if args.https:
+        try:
+            cert_path, key_path = ensure_self_signed_cert(build_sans())
+        except ImportError:
+            parser.error("--https necessite le paquet 'cryptography' (pip install cryptography)")
+        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ssl_context.load_cert_chain(cert_path, key_path)
+        scheme = "https"
+
+    server = make_server(args.host, args.port, ssl_context=ssl_context)
+    print(f"Dashboard sur {http_url(args.host, args.port, scheme)}")
+    for label, url in lan_urls(args.host, args.port, scheme):
         print(f"  {label} : {url}")
+    if args.https:
+        print("  Certificat auto-signe : le navigateur affichera un avertissement a accepter.")
     if not args.no_browser:
-        webbrowser.open(browser_url(args.host, args.port))
+        webbrowser.open(browser_url(args.host, args.port, scheme))
     server.serve_forever()
 
 

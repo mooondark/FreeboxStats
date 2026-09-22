@@ -32,6 +32,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 
 - Python 3
 - La bibliothèque [`requests`](https://pypi.org/project/requests/) : `pip install requests`
+- Pour servir le dashboard en HTTPS (`--https`) : [`cryptography`](https://pypi.org/project/cryptography/) : `pip install cryptography` (facultatif, seulement nécessaire avec cette option)
 - Un accès réseau à la Freebox (`mafreebox.freebox.fr`)
 
 ## Installation et premier lancement
@@ -61,6 +62,22 @@ Le navigateur par défaut s'ouvre automatiquement sur <http://127.0.0.1:8000> (d
 | `--host`     | `127.0.0.1` | Adresse d'écoute : `0.0.0.0` (LAN en IPv4), `::` (IPv6 **et** IPv4) ou `::1` (IPv6 local) |
 | `--port`     | `8000`      | Port d'écoute                                                      |
 | `--no-browser` | (désactivé) | Ne pas ouvrir le navigateur au démarrage                         |
+| `--https`    | (désactivé) | Servir en HTTPS avec un certificat auto-signé (nécessite `pip install cryptography`) |
+
+### Garder l'écran allumé sur mobile (HTTPS)
+
+La page peut empêcher l'écran du téléphone de s'éteindre (case « Garder l'écran allumé », cochée par défaut), mais le navigateur ne l'autorise que dans un **contexte sécurisé** : `https://`, ou `http://localhost`/`127.0.0.1`. Une adresse locale classique comme `http://192.168.1.x:8000` ne compte pas comme sécurisée, et la case reste grisée.
+
+Pour l'activer depuis un téléphone sur le réseau local :
+
+```bash
+pip install cryptography
+python fbxstat_web.py --host 0.0.0.0 --https
+```
+
+Au premier lancement avec `--https`, un certificat auto-signé est généré (`~/.fbxstat_cert/`), valable pour `127.0.0.1`, `::1`, `localhost` et les adresses réseau de la machine (régénéré automatiquement si elles changent). Le serveur affiche alors une URL `https://…` : ouvre-la depuis le téléphone. Le certificat n'étant signé par personne de reconnu, le navigateur affiche un avertissement de sécurité à accepter manuellement (une fois par appareil).
+
+Alternative sans toucher au serveur : dans Chrome Android, ajouter l'adresse du dashboard (ex. `http://192.168.1.96:8000`) dans `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, puis redémarrer Chrome. Réglage local à l'appareil, à refaire si l'adresse change.
 
 Le serveur **n'interroge la Freebox que lorsqu'une page est ouverte** : au bout de 15 secondes sans requête de la page (page fermée, ou bouton Pause), la collecte s'arrête complètement et les données en mémoire sont effacées. Elle reprend dès qu'une page se rouvre, donc l'historique des graphiques repart de zéro à chaque ouverture. Le serveur peut ainsi rester allumé en permanence sans solliciter la box.
 

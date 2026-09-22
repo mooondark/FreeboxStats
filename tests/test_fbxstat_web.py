@@ -2,6 +2,7 @@ import http.client
 import json
 import os
 import socket
+import ssl
 import tempfile
 import threading
 import unittest
@@ -10,6 +11,12 @@ from unittest import mock
 
 import fbxstat_web
 from freebox_api import AuthRequired
+
+try:
+    import cryptography  # noqa: F401
+    HAS_CRYPTOGRAPHY = True
+except ImportError:
+    HAS_CRYPTOGRAPHY = False
 
 
 class TestHistory(unittest.TestCase):
@@ -43,6 +50,14 @@ class TestArgParser(unittest.TestCase):
     def test_browser_url_brackets_ipv6_literal(self):
         self.assertEqual(fbxstat_web.browser_url("::1", 8000), "http://[::1]:8000")
         self.assertEqual(fbxstat_web.browser_url("2a01:e0a::1", 9000), "http://[2a01:e0a::1]:9000")
+
+    def test_https_flag_switches_the_url_scheme(self):
+        self.assertEqual(fbxstat_web.http_url("127.0.0.1", 8000, scheme="https"), "https://127.0.0.1:8000")
+        self.assertEqual(fbxstat_web.browser_url("0.0.0.0", 8000, scheme="https"), "https://127.0.0.1:8000")
+
+    def test_https_defaults_to_disabled(self):
+        args = fbxstat_web.build_arg_parser().parse_args([])
+        self.assertFalse(args.https)
 
     def test_default_host_is_localhost(self):
         args = fbxstat_web.build_arg_parser().parse_args([])
@@ -124,6 +139,91 @@ def _ipv6_available():
         return True
     except OSError:
         return False
+
+
+class TestBuildSans(unittest.TestCase):
+    def test_includes_loopback_localhost_and_lan_addresses(self):
+        with mock.patch.object(fbxstat_web, "primary_ipv4", return_value="192.168.1.96"), \
+                mock.patch.object(fbxstat_web, "link_local_ipv6", return_value=["fe80::1", "fe80::2"]):
+            self.assertEqual(
+                fbxstat_web.build_sans(),
+                ["127.0.0.1", "::1", "localhost", "192.168.1.96", "fe80::1", "fe80::2"],
+            )
+
+    def test_skips_missing_ipv4(self):
+        with mock.patch.object(fbxstat_web, "primary_ipv4", return_value=None), \
+                mock.patch.object(fbxstat_web, "link_local_ipv6", return_value=[]):
+            self.assertEqual(fbxstat_web.build_sans(), ["127.0.0.1", "::1", "localhost"])
+
+
+@unittest.skipUnless(HAS_CRYPTOGRAPHY, "cryptography not installed")
+class TestSelfSignedCert(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.cert_path = os.path.join(self.tmp, "cert.pem")
+        self.key_path = os.path.join(self.tmp, "key.pem")
+        self.meta_path = os.path.join(self.tmp, "meta.json")
+        patcher = mock.patch.object(
+            fbxstat_web, "cert_paths", return_value=(self.cert_path, self.key_path, self.meta_path)
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_generates_a_cert_covering_the_given_sans(self):
+        from cryptography import x509
+
+        cert_path, key_path = fbxstat_web.ensure_self_signed_cert(["127.0.0.1", "192.168.1.96"])
+        self.assertTrue(os.path.exists(cert_path))
+        self.assertTrue(os.path.exists(key_path))
+
+        with open(cert_path, "rb") as f:
+            cert = x509.load_pem_x509_certificate(f.read())
+        san = cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+        names = {str(n.value) for n in san}
+        self.assertIn("127.0.0.1", names)
+        self.assertIn("192.168.1.96", names)
+
+    def test_reuses_existing_cert_when_sans_unchanged(self):
+        fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        with open(self.cert_path, "rb") as f:
+            first = f.read()
+
+        fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        with open(self.cert_path, "rb") as f:
+            second = f.read()
+
+        self.assertEqual(first, second)
+
+    def test_regenerates_when_sans_change(self):
+        fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        with open(self.cert_path, "rb") as f:
+            first = f.read()
+
+        fbxstat_web.ensure_self_signed_cert(["127.0.0.1", "192.168.1.50"])
+        with open(self.cert_path, "rb") as f:
+            second = f.read()
+
+        self.assertNotEqual(first, second)
+
+    def test_https_server_round_trip_with_generated_cert(self):
+        cert_path, key_path = fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+
+        server = fbxstat_web.make_server("127.0.0.1", 0, ssl_context=ctx)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client_ctx.check_hostname = False
+        client_ctx.verify_mode = ssl.CERT_NONE
+        conn = http.client.HTTPSConnection("127.0.0.1", port, timeout=5, context=client_ctx)
+        conn.request("GET", "/nope")
+        self.assertEqual(conn.getresponse().status, 404)
+        conn.close()
 
 
 class TestMakeServer(unittest.TestCase):
