@@ -318,11 +318,16 @@ def make_server(host, port, ssl_context=None):
                 self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
             super().server_bind()
 
-        def get_request(self):
-            sock, addr = super().get_request()
+        def finish_request(self, request, client_address):
+            # The handshake blocks, so do it here (already in the per-request thread)
+            # rather than in get_request(), which runs in the single-threaded accept
+            # loop and would freeze every other client while one handshake is stuck.
             if ssl_context is not None:
-                sock = ssl_context.wrap_socket(sock, server_side=True)
-            return sock, addr
+                try:
+                    request = ssl_context.wrap_socket(request, server_side=True)
+                except (ssl.SSLError, OSError):
+                    return
+            super().finish_request(request, client_address)
 
     return Server((host, port), Handler)
 

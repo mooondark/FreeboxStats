@@ -225,6 +225,33 @@ class TestSelfSignedCert(unittest.TestCase):
         self.assertEqual(conn.getresponse().status, 404)
         conn.close()
 
+    def test_stalled_handshake_does_not_block_other_clients(self):
+        """A client that opens a TCP connection but never sends TLS bytes must not
+        freeze the accept loop for every other client (real bug: doing the TLS
+        handshake in get_request() runs it on the single-threaded accept loop)."""
+        cert_path, key_path = fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+
+        server = fbxstat_web.make_server("127.0.0.1", 0, ssl_context=ctx)
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        # Open a TCP connection and never send the TLS ClientHello.
+        stalled = socket.create_connection(("127.0.0.1", port), timeout=5)
+        self.addCleanup(stalled.close)
+
+        client_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        client_ctx.check_hostname = False
+        client_ctx.verify_mode = ssl.CERT_NONE
+        conn = http.client.HTTPSConnection("127.0.0.1", port, timeout=3, context=client_ctx)
+        conn.request("GET", "/nope")
+        self.assertEqual(conn.getresponse().status, 404)
+        conn.close()
+
 
 class TestMakeServer(unittest.TestCase):
     def test_family_follows_host(self):
