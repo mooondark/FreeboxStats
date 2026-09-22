@@ -22,6 +22,7 @@ INTERVAL = 3.0
 IF_INET6_PATH = "/proc/net/if_inet6"
 ALLOWED_INTERVALS = (1, 3, 5)
 IDLE_AFTER = 15.0
+TLS_HANDSHAKE_TIMEOUT = 10.0
 LAST_ACTIVITY = 0.0
 ACTIVITY = threading.Event()
 STATE_LOCK = threading.Lock()
@@ -323,10 +324,18 @@ def make_server(host, port, ssl_context=None):
             # rather than in get_request(), which runs in the single-threaded accept
             # loop and would freeze every other client while one handshake is stuck.
             if ssl_context is not None:
+                # A connection that never completes the handshake (dropped packets,
+                # a mobile client's speculative/retried connections) must not pin
+                # this thread forever: piling those up eventually starves the
+                # server of threads/file descriptors for every client, including
+                # localhost.
+                request.settimeout(TLS_HANDSHAKE_TIMEOUT)
                 try:
                     request = ssl_context.wrap_socket(request, server_side=True)
                 except (ssl.SSLError, OSError):
+                    request.close()
                     return
+                request.settimeout(None)  # back to normal blocking I/O for the request itself
             super().finish_request(request, client_address)
 
     return Server((host, port), Handler)

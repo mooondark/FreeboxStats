@@ -5,6 +5,7 @@ import socket
 import ssl
 import tempfile
 import threading
+import time
 import unittest
 from http.server import HTTPServer
 from unittest import mock
@@ -251,6 +252,42 @@ class TestSelfSignedCert(unittest.TestCase):
         conn.request("GET", "/nope")
         self.assertEqual(conn.getresponse().status, 404)
         conn.close()
+
+    def test_stalled_handshake_thread_gives_up_and_is_not_leaked(self):
+        """A handshake that never completes must not pin its worker thread forever:
+        stalled connections pile up on a mobile network (retries, dropped packets),
+        and an unbounded thread/FD leak eventually makes the whole server
+        unresponsive (real symptom: ERR_CONNECTION_TIMED_OUT after a few seconds,
+        even for curl on 127.0.0.1 -- not a client-side issue)."""
+        cert_path, key_path = fbxstat_web.ensure_self_signed_cert(["127.0.0.1"])
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(cert_path, key_path)
+
+        server = fbxstat_web.make_server("127.0.0.1", 0, ssl_context=ctx)
+        server.timeout = None
+        port = server.server_address[1]
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        before = threading.active_count()
+        stalled = socket.create_connection(("127.0.0.1", port), timeout=5)
+        self.addCleanup(stalled.close)
+        # give the server a moment to accept() and spawn the handling thread
+        deadline = time.time() + 2
+        while threading.active_count() <= before and time.time() < deadline:
+            time.sleep(0.05)
+        self.assertGreater(threading.active_count(), before, "server never spawned a thread for the stalled connection")
+
+        deadline = time.time() + fbxstat_web.TLS_HANDSHAKE_TIMEOUT + 3
+        while threading.active_count() > before and time.time() < deadline:
+            time.sleep(0.1)
+
+        self.assertLessEqual(
+            threading.active_count(), before,
+            "handshake thread for the stalled connection is still alive: it has no timeout",
+        )
 
 
 class TestMakeServer(unittest.TestCase):
