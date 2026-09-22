@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 
 HTML_PATH = os.path.join(os.path.dirname(__file__), "..", "templates", "dashboard.html")
@@ -33,6 +34,12 @@ class TestResponsive(unittest.TestCase):
     def test_charts_have_a_sized_container(self):
         self.assertEqual(HTML.count('<div class="chart-box">'), 2)
         self.assertEqual(HTML.count("maintainAspectRatio: false"), 2)
+
+    def test_keep_awake_checkbox_is_present_and_checked_by_default(self):
+        self.assertIn('id="keep-awake"', HTML)
+        checkbox = re.search(r'<input[^>]*id="keep-awake"[^>]*>', HTML).group(0)
+        self.assertIn("checked", checkbox)
+        self.assertIn("navigator.wakeLock", HTML)
 
 
 if __name__ == "__main__":

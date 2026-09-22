@@ -59,6 +59,7 @@
   <span class="btns" id="refresh"><button data-s="1">1 s</button><button data-s="3">3 s</button><button data-s="5">5 s</button><button data-s="pause">Pause</button></span>
   <span>Échelle vitesse</span>
   <span class="btns" id="scale"><button data-m="linear" class="active">Linéaire</button><button data-m="log">Log</button></span>
+  <label><input type="checkbox" id="keep-awake" checked> Garder l'écran allumé</label>
 </div>
 
 <div class="charts">
@@ -354,6 +355,34 @@ async function tick() {
   }
   busy = false;
   tickTimer = setTimeout(tick, (refreshS ?? 1) * 1000);
+}
+
+let wakeLock = null;
+const keepAwakeBox = document.getElementById("keep-awake");
+
+async function acquireWakeLock() {
+  if (!("wakeLock" in navigator) || !keepAwakeBox.checked || wakeLock) return;
+  try {
+    wakeLock = await navigator.wakeLock.request("screen");
+    wakeLock.addEventListener("release", () => { wakeLock = null; });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+if (!("wakeLock" in navigator)) {
+  keepAwakeBox.checked = false;
+  keepAwakeBox.disabled = true;
+  keepAwakeBox.parentElement.title = "Non pris en charge par ce navigateur";
+} else {
+  keepAwakeBox.addEventListener("change", () => {
+    if (keepAwakeBox.checked) acquireWakeLock();
+    else wakeLock?.release();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") acquireWakeLock();
+  });
+  acquireWakeLock();
 }
 
 tick();
