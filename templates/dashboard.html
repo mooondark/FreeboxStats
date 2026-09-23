@@ -168,8 +168,35 @@ const maxLabels = {
   },
 };
 
+const avgDownLine = {
+  id: "avgDownLine",
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    const down = chart.data.datasets[0];
+    const vals = down.data.map(p => p.y).filter(v => v != null);
+    if (!vals.length) return;
+    const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+    const y = scales[down.yAxisID].getPixelForValue(avg);
+
+    ctx.save();
+    ctx.strokeStyle = down.borderColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(chartArea.left, y);
+    ctx.lineTo(chartArea.right, y);
+    ctx.stroke();
+
+    ctx.fillStyle = down.borderColor;
+    ctx.font = "12px system-ui, sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(`${avg.toFixed(avg < 0.1 ? 3 : 2)} Mb/s`, chartArea.left + 4, Math.max(y - 4, chartArea.top + 12));
+    ctx.restore();
+  },
+};
+
 const wanChart = new Chart(document.getElementById("wan-chart"), {
-  plugins: [maxLabels],
+  plugins: [maxLabels, avgDownLine],
   type: "line",
   data: { datasets: [
     { label: "Down (Mb/s)", data: [], yAxisID: "y", borderColor: "#3498db", tension: 0.2 },
