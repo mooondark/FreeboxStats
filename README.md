@@ -8,7 +8,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 
 ## Aperçu
 
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/70cb9d5b-3631-474b-a8aa-e24653f61a54" />
+<img width="1906" height="867" alt="image" src="https://github.com/user-attachments/assets/1e5d1f38-f83a-4e5b-8784-26e91b1f3ca6" />
 
 ## Fonctionnalités
 
