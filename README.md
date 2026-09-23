@@ -14,15 +14,17 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 
 **Dashboard web** (`fbxstat_web.py`)
 
-- Graphique du débit WAN descendant / montant, chacun sur son propre axe (Mb/s).
+- Graphique du débit WAN descendant / montant, chacun sur son propre axe (Mb/s) ; la valeur maximale de chaque courbe s'affiche en encadré au-dessus de son pic, et la moyenne du débit descendant est tracée en ligne fine avec sa valeur au-dessus.
 - Graphique des températures (axe de gauche, °C) et de la vitesse du ventilateur (axe de droite, RPM).
 - Échelle du graphique de vitesse commutable entre linéaire et logarithmique (pour ne pas écraser les petites valeurs ; en mode log, les valeurs nulles sont ramenées à 0,001 Mb/s).
 - Fenêtre glissante réglable : 1, 3 ou 5 minutes.
-- Fréquence de rafraîchissement réglable depuis la page : 1, 3 ou 5 secondes.
-- En-tête : matériel, version de Freebox OS, état des services (Internet, Authentification, Téléphone), IPv4/IPv6, uptime et débit global.
-- Tableau des ports du switch avec lien actif (vitesse négociée, débit descendant/montant).
+- Fréquence de rafraîchissement réglable depuis la page : 1, 3 ou 5 secondes, ou Pause pour figer l'affichage sans arrêter la collecte.
+- Case « Garder l'écran allumé » (cochée par défaut, nécessite un contexte sécurisé — voir `--https` plus bas).
+- En-tête : matériel, version de Freebox OS, état des services (Internet, Authentification, Téléphone), IPv4/IPv6, uptime, débit global instantané et total de données échangées.
+- Tableau des ports du switch avec lien actif (vitesse négociée, débit instantané et total descendant/montant).
 - Tableau des appareils connectés (nom, IPv4, IPv6 locale, IPv6 globale, type sous forme d'icône, constructeur), triés par IPv4. Quand un appareil a plusieurs IPv6, celle affichée est la dernière utilisée (`last_activity`), à défaut la première de la liste.
 - Bandeau « DONNEES FIGEES » si les données ne sont plus mises à jour.
+- Mise en page adaptée au mobile (graphiques empilés, tableaux défilants).
 
 **Moniteur terminal** (`fbxstat.py`) : mêmes informations, affichées et rafraîchies dans le terminal.
 
