@@ -18,6 +18,7 @@
   .header.stale .ok, .header.stale .ko { opacity: 0.4; }
   table { width: auto; margin: 0 auto; border-collapse: collapse; }
   th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #2a2e37; }
+  #devices-head th { cursor: pointer; user-select: none; white-space: nowrap; }
   .chart-box { position: relative; height: 260px; }
   .table-wrap { overflow-x: auto; }
   .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: center; margin-bottom: 8px; }
@@ -81,7 +82,7 @@
   <h3>Appareils</h3>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>IPv6 globale</th><th>Port</th><th>Type</th><th>Constructeur</th></tr></thead>
+    <thead id="devices-head"><tr><th data-key="name">Nom</th><th data-key="ipv4">IPv4</th><th data-key="ipv6">IPv6 locale</th><th data-key="ipv6_global">IPv6 globale</th><th data-key="port">Port</th><th data-key="type">Type</th><th data-key="vendor">Constructeur</th></tr></thead>
     <tbody id="devices-body"></tbody>
   </table>
   </div>
@@ -251,8 +252,31 @@ function updateTables(snap) {
     `<tr><td>${esc(p.port)}</td><td>${esc(p.speed)}</td><td>${fmtMbps(p.down_bps)}</td><td>${fmtMbps(p.up_bps)}</td><td>${fmtBytes(p.down_bytes)}</td><td>${fmtBytes(p.up_bytes)}</td></tr>`
   ).join("");
 
-  const devicesBody = document.getElementById("devices-body");
-  devicesBody.innerHTML = (snap.devices ?? []).map(d =>
+  lastDevices = snap.devices ?? [];
+  renderDevices();
+}
+
+// Tri du tableau des appareils : clic sur un en-tete = tri croissant, second clic = decroissant.
+// La collation numerique trie "192.168.1.5" avant "192.168.1.20".
+let lastDevices = [];
+let devSort = { key: "ipv4", dir: 1 };
+const collator = new Intl.Collator("fr", { numeric: true, sensitivity: "base" });
+
+document.getElementById("devices-head").addEventListener("click", e => {
+  const key = e.target.closest("th")?.dataset.key;
+  if (!key) return;
+  devSort = { key, dir: devSort.key === key ? -devSort.dir : 1 };
+  renderDevices();
+});
+
+function renderDevices() {
+  document.querySelectorAll("#devices-head th").forEach(th => {
+    th.textContent = th.textContent.replace(/ [▲▼]$/, "") +
+      (th.dataset.key === devSort.key ? (devSort.dir > 0 ? " ▲" : " ▼") : "");
+  });
+  const { key, dir } = devSort;
+  const sorted = [...lastDevices].sort((a, b) => dir * collator.compare(a[key] ?? "", b[key] ?? ""));
+  document.getElementById("devices-body").innerHTML = sorted.map(d =>
     `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.ipv6_global)}</td><td>${esc(d.port)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
   ).join("");
 }
