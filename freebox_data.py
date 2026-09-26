@@ -17,8 +17,12 @@ def _get(path, session_token):
     return http.get(f"{BASE_URL}{path}", headers={"X-Fbx-App-Auth": session_token}, timeout=10).json()
 
 
-def fetch_ports(session_token):
-    ports_resp = _get("/switch/status/", session_token)
+def _port_name(port_id):
+    return "SFP+" if port_id == 9999 else str(port_id)
+
+
+def fetch_ports(session_token, switch_status=None):
+    ports_resp = switch_status or _get("/switch/status/", session_token)
     if not ports_resp.get("success"):
         return []
 
@@ -30,7 +34,7 @@ def fetch_ports(session_token):
         if not stats_resp.get("success"):
             continue
         s = stats_resp["result"]
-        name = "SFP+" if p["id"] == 9999 else str(p["id"])
+        name = _port_name(p["id"])
         speed = SPEED_LABELS.get(p.get("speed"), str(p.get("speed", "N/A")))
         # rx/tx are counted by the box: what it sends (tx) is the connected device's download
         rows.append({
@@ -52,8 +56,14 @@ def _last_used_ipv6(connectivities, keep):
     return max(candidates, key=lambda c: c.get("last_activity", 0))["addr"]
 
 
-def fetch_devices(session_token):
+def fetch_devices(session_token, switch_status=None):
     hosts = _get("/lan/browser/pub/", session_token)["result"]
+    status = switch_status or _get("/switch/status/", session_token)
+    port_by_mac = {
+        m["mac"].upper(): _port_name(p["id"])
+        for p in (status.get("result") or [] if status.get("success") else [])
+        for m in p.get("mac_list", [])
+    }
 
     rows = []
     for h in hosts:
@@ -68,6 +78,7 @@ def fetch_devices(session_token):
             "ipv6_global": _last_used_ipv6(conns, lambda a: ipaddress.ip_address(a).is_global),
             "type": h.get("host_type") or "N/A",
             "vendor": h.get("vendor_name") or "N/A",
+            "port": port_by_mac.get(h.get("l2ident", {}).get("id", "").upper(), ""),
         })
 
     rows.sort(key=lambda r: tuple(int(x) for x in r["ipv4"].split(".")))
@@ -81,6 +92,7 @@ def fetch_snapshot(session_token):
     result = data["result"]
 
     sys_data = _get("/system/", session_token)["result"]
+    switch_status = _get("/switch/status/", session_token)
 
     try:
         phone_data = _get("/phone/", session_token)["result"]
@@ -103,6 +115,6 @@ def fetch_snapshot(session_token):
         "wan_up_bytes": max(result.get("bytes_up", 0), 0),
         "sensors": sys_data.get("sensors", []),
         "fans": sys_data.get("fans", []),
-        "ports": fetch_ports(session_token),
-        "devices": fetch_devices(session_token),
+        "ports": fetch_ports(session_token, switch_status),
+        "devices": fetch_devices(session_token, switch_status),
     }

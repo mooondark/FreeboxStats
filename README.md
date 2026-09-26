@@ -22,7 +22,7 @@ Outils de supervision pour **Freebox** (testé sur une Freebox v9 / Freebox OS 4
 - Case « Garder l'écran allumé » (cochée par défaut, nécessite un contexte sécurisé — voir `--https` plus bas).
 - En-tête : matériel, version de Freebox OS, état des services (Internet, Authentification, Téléphone), IPv4/IPv6, uptime, débit global instantané et total de données échangées.
 - Tableau des ports du switch avec lien actif (vitesse négociée, débit instantané et total descendant/montant).
-- Tableau des appareils connectés (nom, IPv4, IPv6 locale, IPv6 globale, type sous forme d'icône, constructeur), triés par IPv4. Quand un appareil a plusieurs IPv6, celle affichée est la dernière utilisée (`last_activity`), à défaut la première de la liste.
+- Tableau des appareils connectés (nom, IPv4, IPv6 locale, IPv6 globale, port du switch, type sous forme d'icône, constructeur), triés par IPv4. Quand un appareil a plusieurs IPv6, celle affichée est la dernière utilisée (`last_activity`), à défaut la première de la liste. Le port est celui où le switch de la Freebox voit l'adresse MAC de l'appareil (un appareil derrière un switch ou un répéteur apparaît sur le port de celui-ci) ; il reste vide si l'appareil n'est vu sur aucun port, par exemple en Wi-Fi directement sur la Freebox.
 - Bandeau « DONNEES FIGEES » si les données ne sont plus mises à jour.
 - Mise en page adaptée au mobile (graphiques empilés, tableaux défilants).
 

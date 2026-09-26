@@ -30,12 +30,12 @@ def fmt_status(ok):
 
 def get_devices_table(session_token):
     rows = [
-        (d["name"], d["ipv4"], d["ipv6"], d["ipv6_global"], d["type"], d["vendor"])
+        (d["name"], d["ipv4"], d["ipv6"], d["ipv6_global"], d["port"], d["type"], d["vendor"])
         for d in fetch_devices(session_token)
     ]
 
-    header = ("Nom", "IPv4", "IPv6 locale", "IPv6 globale", "Type", "Constructeur")
-    widths = [max(len(r[i]) for r in rows + [header]) for i in range(6)]
+    header = ("Nom", "IPv4", "IPv6 locale", "IPv6 globale", "Port", "Type", "Constructeur")
+    widths = [max(len(r[i]) for r in rows + [header]) for i in range(7)]
     lines = ["| " + " | ".join(h.ljust(w) for h, w in zip(header, widths)) + " |"]
     for r in rows:
         lines.append("| " + " | ".join(c.ljust(w) for c, w in zip(r, widths)) + " |")

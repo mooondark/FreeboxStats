@@ -81,7 +81,7 @@
   <h3>Appareils</h3>
   <div class="table-wrap">
   <table>
-    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>IPv6 globale</th><th>Type</th><th>Constructeur</th></tr></thead>
+    <thead><tr><th>Nom</th><th>IPv4</th><th>IPv6 locale</th><th>IPv6 globale</th><th>Port</th><th>Type</th><th>Constructeur</th></tr></thead>
     <tbody id="devices-body"></tbody>
   </table>
   </div>
@@ -253,7 +253,7 @@ function updateTables(snap) {
 
   const devicesBody = document.getElementById("devices-body");
   devicesBody.innerHTML = (snap.devices ?? []).map(d =>
-    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.ipv6_global)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
+    `<tr><td>${esc(d.name)}</td><td>${esc(d.ipv4)}</td><td>${esc(d.ipv6)}</td><td>${esc(d.ipv6_global)}</td><td>${esc(d.port)}</td><td>${typeIcon(d.type)}</td><td>${esc(d.vendor)}</td></tr>`
   ).join("");
 }
 

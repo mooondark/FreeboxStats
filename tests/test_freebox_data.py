@@ -110,6 +110,33 @@ class TestFetchDevices(unittest.TestCase):
 
         self.assertEqual(device["ipv6_global"], "2a01:e0a::9")
 
+    @patch("freebox_data.http.get")
+    def test_port_comes_from_switch_mac_list(self, mock_get):
+        hosts = {"result": [
+            {"primary_name": "NAS", "l2ident": {"id": "aa:bb:cc:dd:ee:01", "type": "mac_address"},
+             "l3connectivities": [{"af": "ipv4", "addr": "192.168.1.5", "active": True}]},
+            {"primary_name": "Cam", "l2ident": {"id": "AA:BB:CC:DD:EE:02", "type": "mac_address"},
+             "l3connectivities": [{"af": "ipv4", "addr": "192.168.1.6", "active": True}]},
+            {"primary_name": "WifiPhone", "l2ident": {"id": "AA:BB:CC:DD:EE:03", "type": "mac_address"},
+             "l3connectivities": [{"af": "ipv4", "addr": "192.168.1.7", "active": True}]},
+        ]}
+        status = {"success": True, "result": [
+            {"id": 1, "link": "up", "mac_list": [{"mac": "AA:BB:CC:DD:EE:01", "hostname": "NAS"}]},
+            {"id": 9999, "link": "up", "mac_list": [{"mac": "AA:BB:CC:DD:EE:02", "hostname": "Cam"}]},
+            {"id": 3, "link": "down"},
+        ]}
+        mock_get.side_effect = lambda url, **k: _resp(status if url.endswith("/switch/status/") else hosts)
+
+        devices = {d["name"]: d["port"] for d in freebox_data.fetch_devices("session-token")}
+
+        self.assertEqual(devices, {"NAS": "1", "Cam": "SFP+", "WifiPhone": ""})
+
+    @patch("freebox_data.http.get")
+    def test_prefetched_switch_status_avoids_a_second_call(self, mock_get):
+        mock_get.return_value = _resp({"result": []})
+        freebox_data.fetch_devices("session-token", switch_status={"success": True, "result": []})
+        self.assertEqual(mock_get.call_count, 1)
+
 
 class TestFetchSnapshot(unittest.TestCase):
     @patch("freebox_data.fetch_devices", return_value=[])
@@ -143,6 +170,8 @@ class TestFetchSnapshot(unittest.TestCase):
                 }})
             if url.endswith("/phone/"):
                 return _resp({"result": [{"hardware_defect": False}]})
+            if url.endswith("/switch/status/"):
+                return _resp({"success": True, "result": []})
             raise AssertionError(f"unexpected URL {url}")
 
         mock_get.side_effect = side_effect
