@@ -362,7 +362,7 @@ document.getElementById("refresh").addEventListener("click", async e => {
     return;
   }
   try {
-    const r = await fetch("/api/interval", {
+    const r = await fetch("api/interval", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ interval: Number(e.target.dataset.s) }),
@@ -386,8 +386,8 @@ async function tick() {
   if (busy) return;
   busy = true;
   try {
-    const snap = await fetch("/api/snapshot").then(r => r.json());
-    const hist = await fetch("/api/history").then(r => r.json());
+    const snap = await fetch("api/snapshot").then(r => r.json());
+    const hist = await fetch("api/history").then(r => r.json());
     if (paused) {
       busy = false;
       return;
