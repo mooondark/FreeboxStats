@@ -137,8 +137,8 @@ const maxLabels = {
     ctx.textAlign = "left";
     const pad = 4, h = 18;
     const overlaps = (b, x, y, w) => x < b.x + b.w && b.x < x + w && y < b.y + h && b.y < y + h;
-    chart.data.datasets.forEach(ds => {
-      if (!ds.data.length) return;
+    chart.data.datasets.forEach((ds, i) => {
+      if (!ds.data.length || !chart.isDatasetVisible(i)) return;
       const peak = ds.data.reduce((a, b) => (b.y > a.y ? b : a));
       const px = scales.x.getPixelForValue(peak.x);
       const py = scales[ds.yAxisID].getPixelForValue(peak.y);
@@ -174,6 +174,7 @@ const avgDownLine = {
   afterDatasetsDraw(chart) {
     const { ctx, chartArea, scales } = chart;
     const down = chart.data.datasets[0];
+    if (!chart.isDatasetVisible(0)) return;
     const vals = down.data.map(p => p.y).filter(v => v != null);
     if (!vals.length) return;
     const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
@@ -319,13 +320,15 @@ function updateCharts(allPoints) {
   const sensorIds = [...new Map(points.flatMap(p => p.sensors ?? []).map(s => [s.id, s.name])).entries()];
   const fanIds = [...new Map(points.flatMap(p => p.fans ?? []).map(f => [f.id, f.name])).entries()];
 
+  // Les datasets sont recrees a chaque relevé : on reporte les courbes masquees via la legende
+  const hidden = new Set(tempChart.data.datasets.filter((d, i) => !tempChart.isDatasetVisible(i)).map(d => d.label));
   tempChart.data.datasets = [
     ...sensorIds.map(([id, name], i) => ({
-      label: name, yAxisID: "y", borderColor: TEMP_COLORS[i % TEMP_COLORS.length], tension: 0.2,
+      label: name, hidden: hidden.has(name), yAxisID: "y", borderColor: TEMP_COLORS[i % TEMP_COLORS.length], tension: 0.2,
       data: points.map(p => ({ x: p.t, y: (p.sensors ?? []).find(s => s.id === id)?.value ?? null })),
     })),
     ...fanIds.map(([id, name], i) => ({
-      label: name, yAxisID: "y1", borderColor: FAN_COLORS[i % FAN_COLORS.length], borderDash: [4, 2], tension: 0.2,
+      label: name, hidden: hidden.has(name), yAxisID: "y1", borderColor: FAN_COLORS[i % FAN_COLORS.length], borderDash: [4, 2], tension: 0.2,
       data: points.map(p => ({ x: p.t, y: (p.fans ?? []).find(f => f.id === id)?.value ?? null })),
     })),
   ];
