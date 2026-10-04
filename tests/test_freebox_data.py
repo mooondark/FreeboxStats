@@ -129,7 +129,7 @@ class TestFetchDevices(unittest.TestCase):
 
         devices = {d["name"]: d["port"] for d in freebox_data.fetch_devices("session-token")}
 
-        self.assertEqual(devices, {"NAS": "1", "Cam": "SFP+", "WifiPhone": ""})
+        self.assertEqual(devices, {"NAS": "1", "Cam": "SFP+", "WifiPhone": "WiFi"})
 
     @patch("freebox_data.http.get")
     def test_prefetched_switch_status_avoids_a_second_call(self, mock_get):

@@ -78,7 +78,7 @@ def fetch_devices(session_token, switch_status=None):
             "ipv6_global": _last_used_ipv6(conns, lambda a: ipaddress.ip_address(a).is_global),
             "type": h.get("host_type") or "N/A",
             "vendor": h.get("vendor_name") or "N/A",
-            "port": port_by_mac.get(h.get("l2ident", {}).get("id", "").upper(), ""),
+            "port": port_by_mac.get(h.get("l2ident", {}).get("id", "").upper(), "WiFi"),
         })
 
     rows.sort(key=lambda r: tuple(int(x) for x in r["ipv4"].split(".")))
